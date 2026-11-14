@@ -148,6 +148,8 @@ byId('map-controls').addEventListener('click', event => {
     byId('map-controls').querySelector('[data-flood-tiles]')?.focus();
     return;
   }
+  const localCase = event.target.closest('[data-open-case]');
+  if (localCase) { selectCase(localCase.dataset.openCase); return; }
   const button = event.target.closest('[data-mode]');
   if (!button || button.dataset.mode === mode) return;
   mode = button.dataset.mode;
@@ -184,7 +186,7 @@ function render() {
     const options = [2.5,4,5,6].map(value => `<option value="${value}"${value===minMagnitude?' selected':''}>M${value.toFixed(1)}+</option>`).join('');
     const controls = {
       Earthquakes:`<label class="control">Magnitude <select id="magnitude">${options}</select></label>`,
-      Floods:`<button type="button" data-flood-tiles aria-pressed="${floodTiles}">Satellite layer</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
+      Floods:`<button type="button" data-open-case="guelma-nisar">Guelma comparison</button><button type="button" data-flood-tiles aria-pressed="${floodTiles}">Satellite layer</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
       Glaciers:'',
     };
     byId('map-controls').innerHTML = controls[hazard];
@@ -224,11 +226,12 @@ function renderOverlay() {
   overlay = null;
   if (!current) return;
   const selected = current.modes.find(item => item.id === mode);
-  if (mode !== 'compare' && (!selected?.image || !mapUnavailable)) return;
+  if (!selected?.compare && (!selected?.image || !mapUnavailable)) return;
   overlay = document.createElement('div');
-  if (mode === 'compare') {
+  if (selected.compare) {
+    const [first,second] = selected.compare;
     overlay.className = 'photo-compare';
-    overlay.innerHTML = `<img alt="Lower Limpopo on 17 December" src="${asset('flood-reference.webp')}"><div class="second"><img alt="Lower Limpopo during flooding on 25 January" src="${asset('flood-event.webp')}"></div><label class="swipe"><span>17 Dec · reference</span><input type="range" min="0" max="100" value="50" aria-label="Compare 17 December with 25 January"><span>25 Jan · flooding</span></label>`;
+    overlay.innerHTML = `<img alt="${escape(current.place)} · ${escape(first.label)}" src="${asset(first.image)}"><div class="second"><img alt="${escape(current.place)} · ${escape(second.label)}" src="${asset(second.image)}"></div><label class="swipe"><span>${escape(first.label)}</span><input type="range" min="0" max="100" value="50" aria-label="Compare ${escape(first.label)} with ${escape(second.label)}"><span>${escape(second.label)}</span></label>`;
     overlay.querySelector('input').addEventListener('input', event => overlay.style.setProperty('--divider', `${event.target.value}%`));
   } else {
     overlay.className = 'single-photo';
@@ -353,13 +356,16 @@ async function updateMap() {
   }
   if (mode === 'compare') return;
   const contexts = {
-    Earthquakes: ['ve', [-70, 8.1, -65, 12.65]],
-    Floods: ['mo', [31.75, -26.2, 34.95, -23.6]],
-    Glaciers: ['pi', [-107, -76.35, -95, -73.6]],
+    'venezuela-earthquakes': ['ve', [-70, 8.1, -65, 12.65]],
+    'mozambique-floods': ['mo', [31.75, -26.2, 34.95, -23.6]],
+    'pine-island-glacier': ['pi', [-107, -76.35, -95, -73.6]],
   };
-  const [context, [cw, cs, ce, cn]] = contexts[current.hazard];
-  map.addSource('regional-context',{type:'image',url:asset(`context-${context}.webp`),coordinates:[[cw,cn],[ce,cn],[ce,cs],[cw,cs]]});
-  map.addLayer({id:'regional-context',source:'regional-context',type:'raster',paint:{'raster-fade-duration':0, 'raster-opacity':.92}});
+  const region = contexts[current.id];
+  if (region) {
+    const [context, [cw, cs, ce, cn]] = region;
+    map.addSource('regional-context',{type:'image',url:asset(`context-${context}.webp`),coordinates:[[cw,cn],[ce,cn],[ce,cs],[cw,cs]]});
+    map.addLayer({id:'regional-context',source:'regional-context',type:'raster',paint:{'raster-fade-duration':0, 'raster-opacity':.92}});
+  }
   const selected = current.modes.find(item => item.id === mode);
   if (selected?.image) {
     map.addSource('scene',{type:'image',url:asset(selected.image),coordinates:[[w,n],[e,n],[e,s],[w,s]]});
