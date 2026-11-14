@@ -1,8 +1,11 @@
 import * as maplibregl from 'maplibre-gl';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { feature } from 'topojson-client';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 import { observations } from './cases.js';
+
+maplibregl.setWorkerUrl(workerUrl);
 
 const asset = file => new URL(`${import.meta.env.BASE_URL}data/${file}`, location.origin).href;
 const byId = id => document.getElementById(id);
