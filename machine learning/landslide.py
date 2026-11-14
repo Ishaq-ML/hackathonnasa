@@ -28,6 +28,9 @@ def main():
     train = commands.add_parser("train", help="Fit a model on three disjoint reviewed splits")
     train.add_argument("manifest")
     train.add_argument("output")
+    train.add_argument("--gpu", choices=("cuda", "cuda:0", "cuda:1"),
+                       help="Tune XGBoost using the selected CUDA device")
+    train.add_argument("--trials", type=int, default=48, help="Number of CUDA tuning trials")
     predict = commands.add_parser("predict", help="Export a candidate score and candidate mask")
     for option in ("stack", "model", "output"):
         predict.add_argument(option)
@@ -62,7 +65,7 @@ def run(args):
                      earthdata=args.earthdata)
     import model
     if args.command == "train":
-        return model.train(args.manifest, args.output)
+        return model.train(args.manifest, args.output, gpu=args.gpu, trials=args.trials)
     return model.predict(args.stack, args.model, args.output)
 
 

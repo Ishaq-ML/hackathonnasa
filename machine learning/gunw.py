@@ -1,7 +1,7 @@
 """Read the NISAR L-SAR GUNW header and safe windows on the native grid."""
 
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 import io
 import os
 from urllib.parse import urlsplit
@@ -37,7 +37,9 @@ def timestamp(value):
 def temporal_check(event, control, occurred):
     event_times = sorted(timestamp(event[k]) for k in ("reference", "secondary"))
     control_times = sorted(timestamp(control[k]) for k in ("reference", "secondary"))
-    if not control_times[0] < control_times[1] == event_times[0] < occurred < event_times[1]:
+    if (not control_times[0] < control_times[1] < occurred
+            or not event_times[0] < occurred < event_times[1]
+            or abs((control_times[1] - event_times[0]).total_seconds()) >= 1):
         raise ValueError("Use a pre-event control sharing the event pair's earlier acquisition")
     return {"event": (event_times[1] - event_times[0]).total_seconds() / 86400,
             "control": (control_times[1] - control_times[0]).total_seconds() / 86400}
@@ -52,7 +54,8 @@ def match_pilot(pilot, event, control):
         if f"{name}_acquisitions" in pilot:
             expected = sorted(timestamp(value) for value in pilot[f"{name}_acquisitions"])
             actual = sorted(timestamp(pair[key]) for key in ("reference", "secondary"))
-            if actual != expected:
+            if len(expected) != 2 or any(abs((a - e).total_seconds()) >= 1
+                                         for a, e in zip(actual, expected)):
                 raise ValueError(f"{name} pair does not match the pilot acquisitions")
     return baselines
 
@@ -183,8 +186,13 @@ def header(handle, polarization):
         layers["validDataMask"] = pol["validDataMask"]
         if layers["validDataMask"].shape != shape:
             raise ValueError("Polarization validity mask does not match the GUNW grid")
+    metadata = {key: text(identity[path][()]) for key, path in METADATA.items()}
+    # GUNW identifies these zero-Doppler times as UTC even without a zone suffix.
+    for key in ("reference", "secondary"):
+        value = datetime.fromisoformat(metadata[key].replace("Z", "+00:00"))
+        metadata[key] = (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
     return {
-        **{key: text(identity[path][()]) for key, path in METADATA.items()},
+        **metadata,
         "polarization": polarization, "center_frequency_hz": frequency,
         "epsg": epsg, "shape": list(shape),
         "transform": list(Affine(dx, 0, x0 - dx / 2, 0, dy, y0 - dy / 2))[:6],

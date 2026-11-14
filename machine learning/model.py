@@ -10,7 +10,7 @@ import numpy as np
 import rasterio
 import sklearn
 from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.metrics import average_precision_score, precision_recall_fscore_support
+from sklearn.metrics import average_precision_score, precision_recall_curve, precision_recall_fscore_support
 
 from features import FEATURES, LABEL, write_cog
 from gunw import timestamp
@@ -86,21 +86,29 @@ def collect(manifest):
     return combined
 
 
-def train(manifest, output):
+def train(manifest, output, gpu=None, trials=48):
     output = Path(output)
     if output.exists():
         raise FileExistsError(output)
     data = collect(manifest)
     x_train, y_train = data["train"]
-    model = HistGradientBoostingClassifier(
-        max_iter=180, max_leaf_nodes=15, min_samples_leaf=30,
-        class_weight="balanced", random_state=42, early_stopping=False,
-    )
-    model.fit(x_train, y_train)
     x_val, y_val = data["validation"]
-    val = model.predict_proba(x_val)[:, 1]
-    thresholds = np.linspace(.05, .95, 19)
-    threshold = float(max(thresholds, key=lambda t: (summarize(y_val, val, t)["f1"], t)))
+    tuning = None
+    if gpu:
+        from gpu_train import tune
+        model, val, tuning = tune(x_train, y_train, x_val, y_val, gpu, trials)
+    else:
+        model = HistGradientBoostingClassifier(
+            max_iter=180, max_leaf_nodes=15, min_samples_leaf=30,
+            class_weight="balanced", random_state=42, early_stopping=False,
+        )
+        model.fit(x_train, y_train)
+        val = model.predict_proba(x_val)[:, 1]
+    precision, recall, thresholds = precision_recall_curve(y_val, val)
+    total = precision[:-1] + recall[:-1]
+    f1 = np.divide(2 * precision[:-1] * recall[:-1], total,
+                   out=np.zeros_like(total), where=total > 0)
+    threshold = float(thresholds[np.flatnonzero(f1 == f1.max())[-1]])
     x_test, y_test = data["test"]
     report = {
         "threshold_selected_on_validation": threshold,
@@ -108,6 +116,8 @@ def train(manifest, output):
         "held_out_test": summarize(y_test, model.predict_proba(x_test)[:, 1], threshold),
         "test_coherence_loss_average_precision": float(average_precision_score(y_test, x_test[:, 2])),
     }
+    if tuning:
+        report["gpu_tuning"] = tuning
     artifact = {"version": SCHEMA_VERSION, "sklearn": sklearn.__version__, "features": FEATURES,
                 "model": model, "threshold": threshold, "metrics": report}
     with tempfile.TemporaryDirectory(dir=output.parent) as temp:

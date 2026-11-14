@@ -61,3 +61,31 @@ When preparing unlabeled inference inputs, omit `--labels` and `--label-source`.
 ```
 
 Training uses histogram gradient boosting, selects the binary threshold on validation F1 and reports test average precision, precision, recall and F1. Compare test average precision with the coherence-loss baseline and inspect missed scars and false positives in snow, water, shadow and stable slopes. Use only trusted model artifacts. The output COG contains a model score and a thresholded candidate mask with NaN for unobserved pixels. It retains granule IDs, acquisition times, grid and mask provenance. The model score has not been calibrated as a probability of landslide occurrence.
+
+## CUDA tuning on Ubuntu
+
+Use a team-local Python environment with the backend requirements and CUDA-enabled
+XGBoost 3.2.0. It can reuse the hackathon Python environment's installed packages.
+
+```bash
+/opt/spaceapps/bin/python -m venv --system-site-packages "$HOME/castor-gpu-env"
+python="$HOME/castor-gpu-env/bin/python"
+"$python" -m pip install -r requirements.txt xgboost==3.2.0
+"$python" landslide.py train splits.json slope-failure-gpu.joblib --gpu cuda:0 --trials 96 \
+  > tuning-metrics.json 2> tuning-progress.log
+```
+
+The tuner checks that XGBoost actually trained on CUDA. It uses early stopping
+and selects hyperparameters by validation average precision, then sets the
+decision threshold on validation data and reports held-out test metrics.
+The saved model runs inference on CPU. Each tuning run uses one GPU so it can
+run on either L40. More trials help compare candidate settings, while additional
+independently labeled sites are what establish whether performance generalizes.
+
+The Rasuwa pilot can use the preliminary UNOSAT detachment polygon as an independent
+positive reference. Keep its source attribution and assess its optical interpretation
+before using it quantitatively. It supplies no stable class. The Copernicus GLO-30
+tile at N28/E085 covers the pilot and supports a small remote crop. [UNOSAT product
+4260](https://unosat.org/products/4260) · [Detachment geometry in the reconstruction
+archive](https://github.com/hyoseokp/langtang-2026-cascade/blob/b5efb873006a3714b95cbb9c0b784c404df01f3f/data/source/unosat_4260/detachment_zone_utm45n.geojson) ·
+[Copernicus DEM download layout](https://copernicus-dem-90m.s3.amazonaws.com/readme.html)
