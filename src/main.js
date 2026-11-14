@@ -132,7 +132,7 @@ function renderOverlay() {
     overlay.className = 'single-photo';
     overlay.innerHTML = `<img alt="${current.title}" src="${asset(selected.image)}">`;
   }
-  byId('map-frame').insertBefore(overlay, byId('map-controls'));
+  byId('map-frame').insertBefore(overlay, byId('map-controls').parentElement);
 }
 
 async function json(file) {
