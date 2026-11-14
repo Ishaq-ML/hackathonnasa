@@ -9,77 +9,75 @@ maplibregl.setWorkerUrl(workerUrl);
 
 const asset = file => new URL(`${import.meta.env.BASE_URL}data/${file}`, location.origin).href;
 const byId = id => document.getElementById(id);
-const filters = ['All', 'Floods', 'Earthquakes', 'Glaciers'];
-const colors = { Floods:'#267d8f', Earthquakes:'#bd723e', Glaciers:'#7391ac' };
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const normalize = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const getQuery = () => new URLSearchParams(location.search);
-const selectedFromUrl = () => observations.find(item => item.id === getQuery().get('case')) || observations[0];
+const selectedFromUrl = () => observations.find(item => item.id === getQuery().get('case')) || observations.find(item => item.hazard === 'Earthquakes');
 const modeFromUrl = item => item.modes.find(mode => mode.id === getQuery().get('layer'))?.id || item.modes[0].id;
-const catalog = byId('catalog');
 let current = selectedFromUrl();
 let mode = modeFromUrl(current);
-let filter = 'All';
 let map;
 let popup;
 let markers = [];
 let overlay;
 let mapReady = false;
 let quakePromise;
-let numericPromise;
+const grids = new Map();
 let updateVersion = 0;
 let focusedCase;
 
-const background = { version:8, sources:{}, layers:[{id:'water',type:'background',paint:{'background-color':'#d7e2de'}}] };
+const background = { version:8, sources:{}, layers:[{id:'water',type:'background',paint:{'background-color':'#101924'}}] };
 const attribution = 'NASA Earthdata GIBS · NASA JPL/ARIA · USGS · Natural Earth';
+const search = byId('search');
+const searchResults = byId('search-results');
 
-function closeCatalog() {
-  catalog.classList.remove('is-open');
-  byId('catalog-toggle').setAttribute('aria-expanded','false');
+function selectCase(id) {
+  const found = observations.find(item => item.id === id);
+  if (!found || found === current) return;
+  current = found;
+  mode = current.modes[0].id;
+  setUrl(false);
+  search.value = '';
+  renderSearch();
+  render();
 }
-byId('catalog-toggle').addEventListener('click', event => {
-  event.currentTarget.setAttribute('aria-expanded', String(catalog.classList.toggle('is-open')));
+function renderSearch() {
+  const query = normalize(search.value.trim());
+  searchResults.hidden = !query;
+  if (!query) return;
+  const matches = observations.filter(item => normalize([item.place,item.location,...item.aliases].join(' ')).includes(query));
+  searchResults.innerHTML = matches.length ? matches.map(item =>
+    `<button class="search-result" type="button" data-id="${item.id}">${item.place} · ${item.short}</button>`
+  ).join('') : '<p class="empty">No observations for this place.</p>';
+}
+search.addEventListener('input', renderSearch);
+search.addEventListener('keydown', event => {
+  if (event.key === 'Enter') searchResults.querySelector('button')?.click();
+  if (event.key === 'Escape') { search.value = ''; renderSearch(); }
 });
-byId('search').addEventListener('input', renderCatalog);
-byId('search').addEventListener('keydown', event => {
-  if (event.key === 'Enter') byId('cases').querySelector('button')?.click();
-});
+function selectFromButton(event) {
+  const button = event.target.closest('[data-id]');
+  if (!button) return;
+  selectCase(button.dataset.id);
+  search.value = '';
+  renderSearch();
+  byId('case-heading').focus({preventScroll:true});
+}
+searchResults.addEventListener('click', selectFromButton);
+byId('cases').addEventListener('click', selectFromButton);
 window.addEventListener('popstate', () => {
   current = selectedFromUrl();
   mode = modeFromUrl(current);
   render();
 });
-
-function renderCatalog() {
-  const query = normalize(byId('search').value.trim());
-  const list = observations.filter(item =>
-    (filter === 'All' || item.hazard === filter) &&
-    normalize([item.place,item.location,...item.aliases].join(' ')).includes(query));
-  byId('filters').innerHTML = filters.map(name => `<button type="button" class="filter" data-filter="${name}" aria-pressed="${filter===name}">${name}</button>`).join('');
-  byId('cases').innerHTML = list.length ? list.map(item => `
-    <button type="button" class="case" data-id="${item.id}" aria-current="${item===current}">
-      <span class="case-type"><span class="chip-dot" style="--dot:${colors[item.hazard]}"></span>${item.hazard}</span>
-      <strong>${item.place}</strong><span class="arrow" aria-hidden="true">↗</span><small>${item.short}</small>
-    </button>`).join('') : '<p class="empty">No mapped observations match this search.</p>';
+function renderTabs() {
+  const order=['Earthquakes','Floods','Glaciers'];
+  byId('cases').innerHTML = order.map(hazard => {
+    const item=observations.find(entry => entry.hazard === hazard);
+    return `<button class="tab" type="button" data-id="${item.id}" aria-current="${item===current}">${hazard}</button>`;
+  }).join('');
 }
 
-byId('filters').addEventListener('click', event => {
-  const button = event.target.closest('[data-filter]');
-  if (!button) return;
-  filter = button.dataset.filter;
-  renderCatalog();
-  byId('filters').querySelector(`[data-filter="${filter}"]`)?.focus();
-});
-byId('cases').addEventListener('click', event => {
-  const button = event.target.closest('[data-id]');
-  if (!button) return;
-  current = observations.find(item => item.id === button.dataset.id);
-  mode = current.modes[0].id;
-  setUrl(false);
-  closeCatalog();
-  render();
-  byId('case-heading').focus({preventScroll:true});
-});
 byId('map-controls').addEventListener('click', event => {
   const button = event.target.closest('[data-mode]');
   if (!button || button.dataset.mode === mode) return;
@@ -104,17 +102,18 @@ function setUrl(replace) {
 }
 
 function render() {
-  renderCatalog();
-  byId('record').innerHTML = `<div><div class="location">${current.location}</div><h2 tabindex="-1" id="case-heading">${current.title}</h2><p class="summary">${current.summary}</p></div><div class="time">${current.date}</div>`;
-  byId('map-controls').innerHTML = current.modes.map(item => `<button type="button" data-mode="${item.id}" aria-pressed="${item.id===mode}">${item.label}</button>`).join('');
-  byId('evidence').innerHTML = `<div class="evidence-details"><div class="label">Observation details</div><h3 id="point-title">${current.measurement}</h3><p id="point-copy" aria-live="polite">${current.evidence}</p></div><div class="evidence-actions"><button type="button" class="quiet" data-sources>Data &amp; methods ↗</button></div>`;
-  byId('legend').innerHTML = mode === 'displacement' ? '<strong>Radar line-of-sight displacement</strong><div class="gradient"></div><div class="legend-values"><span>−50 cm</span><span>0</span><span>+50 cm</span></div>' :
-    mode === 'shaking' ? '<strong>USGS shaking intensity</strong><br><span>Modified Mercalli (MMI)</span>' : mode === 'compare' ? '' :
-    current.hazard === 'Floods' ? '<strong>False-color MODIS</strong><br><span>Water appears dark blue</span>' : '<strong>True-color MODIS</strong>';
-  byId('map-note').textContent = mode === 'compare' ? '' :
-    current.hazard === 'Floods' ? 'NASA Terra MODIS · 7 / 2 / 1' :
-      current.hazard === 'Glaciers' ? 'NASA Terra MODIS · 14 Feb 2026' :
-        mode === 'shaking' ? 'USGS ShakeMap · M7.5 event' : 'NASA JPL / ARIA · NISAR GUNW';
+  renderTabs();
+  const selected = current.modes.find(item => item.id === mode);
+  byId('record').innerHTML = `<h2 tabindex="-1" id="case-heading">${current.place}</h2><p class="time">${selected.date ?? current.date}</p>`;
+  byId('map-controls').innerHTML = current.modes.length > 1 ? current.modes.map(item => `<button type="button" data-mode="${item.id}" aria-pressed="${item.id===mode}">${item.label}</button>`).join('') : '';
+  byId('evidence').innerHTML = `<div class="evidence-details"><h3 id="point-title">${selected.label}</h3><p id="point-copy" aria-live="polite">${selected.hint ?? current.evidence}</p></div><button type="button" class="quiet" data-sources>Sources</button>`;
+  const legends = {
+    displacement: '<strong>Displacement · cm</strong><div class="gradient"></div><div class="legend-values"><span>−50</span><span>0</span><span>+50</span></div>',
+    shaking: '<strong>Shaking · MMI</strong>',
+    extent: '<div class="key-list"><span><i style="--key:#ff7957"></i> Flood detected</span><span><i style="--key:#57b9f0"></i> Surface water</span><span><i style="--key:#f0d15f"></i> Recurring flood</span><span><i style="--key:#a5abb2"></i> Insufficient data</span></div>',
+  };
+  byId('legend').innerHTML = legends[mode] ?? '';
+  byId('map-note').textContent = '';
   renderOverlay();
   if (mapReady) updateMap();
 }
@@ -159,8 +158,10 @@ async function startMap() {
   try {
     const topology = await json('world.json');
     map.addSource('land', {type:'geojson',data:feature(topology,topology.objects.countries)});
-    map.addLayer({id:'land',type:'fill',source:'land',paint:{'fill-color':'#e9e9d9'}});
-    map.addLayer({id:'borders',type:'line',source:'land',paint:{'line-color':'#aaa997','line-width':.7}});
+    map.addLayer({id:'land',type:'fill',source:'land',paint:{'fill-color':'#242e38'}});
+    map.addLayer({id:'borders',type:'line',source:'land',paint:{'line-color':'#4d5864','line-width':.7}});
+    map.addSource('basemap', {type:'raster',tiles:['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],tileSize:256,maxzoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attribution/">CARTO</a>'});
+    map.addLayer({id:'basemap',type:'raster',source:'basemap',paint:{'raster-opacity':.76}});
   } catch (error) {
     console.error(error);
   }
@@ -179,13 +180,13 @@ async function updateMap() {
   const [[w,s],[e,n]] = current.bounds;
   if (focusedCase !== current.id) {
     focusedCase = current.id;
-    map.fitBounds(current.bounds,{padding:{top:54,right:33,bottom:48,left:33},duration:0,maxZoom:11});
+    map.fitBounds(current.bounds,{padding:{top:70,right:24,bottom:100,left:24},duration:0,maxZoom:11});
   }
   if (mode === 'compare') return;
   const selected = current.modes.find(item => item.id === mode);
   if (selected?.image) {
     map.addSource('scene',{type:'image',url:asset(selected.image),coordinates:[[w,n],[e,n],[e,s],[w,s]]});
-    map.addLayer({id:'scene',source:'scene',type:'raster',paint:{'raster-fade-duration':0,'raster-resampling':mode==='displacement'?'nearest':'linear'}});
+    map.addLayer({id:'scene',source:'scene',type:'raster',paint:{'raster-fade-duration':0,'raster-resampling':['displacement','extent'].includes(mode)?'nearest':'linear'}});
   }
   for (const [lng,lat,label] of current.markers) {
     const element=document.createElement('div');
@@ -242,16 +243,21 @@ async function inspectPoint(event) {
     showPoint(coords,'Outside the observation',point);
     return;
   }
-  if (mode !== 'displacement') {
+  if (!['displacement','extent'].includes(mode)) {
     showPoint(coords,point,mode==='shaking'?'Use the epicenter markers and MMI contours to inspect this event.':'Satellite imagery at this location. Open Data & methods for the acquisition and source.');
     return;
   }
   try {
-    numericPromise ||= Promise.all([json('displacement.json'),fetch(asset('displacement.f32')).then(response=>{
-      if (!response.ok) throw new Error('Grid could not load');
-      return response.arrayBuffer();
-    })]).catch(error=>{numericPromise=null;throw error});
-    const [grid,buffer]=await numericPromise;
+    const isFlood = mode === 'extent';
+    const key = isFlood ? 'flood-extent' : 'displacement';
+    if (!grids.has(key)) {
+      const loadGrid = Promise.all([json(key + '.json'), fetch(asset(key + (isFlood ? '.u8' : '.f32'))).then(response => {
+        if (!response.ok) throw new Error('Grid could not load');
+        return response.arrayBuffer();
+      })]).catch(error => { grids.delete(key); throw error; });
+      grids.set(key, loadGrid);
+    }
+    const [grid,buffer] = await grids.get(key);
     if (version !== updateVersion) return;
     const rad=lat*Math.PI/180;
     const x=6378137*lng*Math.PI/180;
@@ -259,11 +265,17 @@ async function inspectPoint(event) {
     const [west,south,east,north]=grid.bounds;
     const col=Math.floor(grid.width*(x-west)/(east-west));
     const row=Math.floor(grid.height*(north-y)/(north-south));
-    const value=row>=0&&row<grid.height&&col>=0&&col<grid.width ?
-      new DataView(buffer).getFloat32(4*(row*grid.width+col),true) : NaN;
-    showPoint(coords,Number.isFinite(value)?`${value>0?'+':''}${value.toFixed(1)} cm`:'No valid radar measurement',point+' · 13–25 June 2026');
+    const index = row>=0 && row<grid.height && col>=0 && col<grid.width ? row*grid.width+col : -1;
+    const view = new DataView(buffer);
+    if (isFlood) {
+      const classes = ['No visible flood class', 'Surface water', 'Recurring flood', 'Flood detected', 'Insufficient data'];
+      showPoint(coords, classes[index < 0 ? 0 : view.getUint8(index)], point + ' · NASA VIIRS · 23–25 Jan 2026');
+    } else {
+      const value = index < 0 ? NaN : view.getFloat32(4*index,true);
+      showPoint(coords, Number.isFinite(value) ? `${value>0?'+':''}${value.toFixed(1)} cm` : 'No valid radar measurement', point + ' · 13–25 June 2026');
+    }
   } catch {
-    if (version === updateVersion) showPoint(coords,'Displacement grid unavailable',point);
+    if (version === updateVersion) showPoint(coords,'Measurement unavailable',point);
   }
 }
 

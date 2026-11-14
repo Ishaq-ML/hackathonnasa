@@ -3,41 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#172622">
+<meta name="theme-color" content="#12161b">
 <meta name="description" content="Explore satellite observations of floods, earthquakes and glacier change.">
-<title>TerraPulse · Earth in observation</title>
+<title>TerraPulse</title>
 </head>
 <body>
-<header class="topbar">
-  <a class="identity" href="./" aria-label="TerraPulse home"><span class="emblem" aria-hidden="true"></span>TerraPulse</a>
-  <button class="catalog-toggle" id="catalog-toggle" type="button" aria-controls="catalog" aria-expanded="false">Observations</button>
-  <a class="event-brand" href="https://www.spaceappschallenge.org/2026/challenges/dancing-with-the-sars/" target="_blank" rel="noopener"><img src="./data/space-apps.png" alt="NASA Space Apps Challenge"></a>
-</header>
-<main class="workspace">
-  <aside class="catalog" id="catalog" aria-label="Observation catalog">
-    <div class="catalog-head">
-      <div class="kicker">OBSERVATION ATLAS</div>
-      <h1>Earth in<br>observation.</h1>
-      <label for="search" class="sr-only">Find a place or hazard</label>
-      <div class="search-wrap"><span aria-hidden="true"></span><input id="search" placeholder="Find a place or hazard" autocomplete="off" type="search"></div>
-      <div class="filters" id="filters" aria-label="Filter by hazard"></div>
-    </div>
-    <nav class="cases" id="cases" aria-label="Study areas"></nav>
-    <footer class="catalog-foot"><span class="tiny-dot"></span> NASA Space Apps 2026 <span class="foot-location">Algiers</span></footer>
-  </aside>
-  <section class="observation" aria-label="Selected observation">
-    <div class="record" id="record"></div>
-    <div class="map-frame" id="map-frame">
+  <header class="topbar">
+    <a class="identity" href="./">TerraPulse</a>
+    <nav class="tabs" id="cases" aria-label="Select hazard"></nav>
+    <a class="partner" href="https://www.spaceappschallenge.org/2026/challenges/dancing-with-the-sars/" target="_blank" rel="noopener"><img src="./data/space-apps.png" alt="NASA Space Apps Challenge"></a>
+  </header>
+  <main class="workspace" aria-label="TerraPulse observation map">
+    <div id="map-frame" class="map-frame">
       <div id="map" class="map" aria-label="Geographic observation map"></div>
-      <div id="map-fallback" class="map-fallback" hidden>This device could not start the interactive map. The observation and source links are available below.</div>
-      <div id="map-controls" class="map-rail"></div>
+      <div id="map-fallback" class="map-fallback" hidden>Interactive map unavailable on this device.</div>
+      <div class="map-tools">
+        <label for="search" class="sr-only">Find a place</label>
+        <div class="search-wrap"><input id="search" placeholder="Find a place" type="search" autocomplete="off" aria-controls="search-results"></div>
+        <div id="search-results" hidden></div>
+        <div id="map-controls" class="layers" aria-label="Observation layers"></div>
+      </div>
       <div id="map-note" class="map-note" aria-live="polite"></div>
       <div id="legend" class="legend"></div>
     </div>
+    <div id="record" class="record"></div>
     <div id="evidence" class="evidence"></div>
-  </section>
-</main>
-<dialog id="reference"><div id="reference-content"></div><form method="dialog"><button class="quiet" type="submit">Close</button></form></dialog>
-<script type="module" src="/src/main.js"></script>
+  </main>
+  <dialog id="reference" aria-label="Observation sources"><div id="reference-content"></div><form method="dialog"><button class="quiet" type="submit">Close</button></form></dialog>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>

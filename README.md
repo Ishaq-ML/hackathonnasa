@@ -16,7 +16,7 @@ The web build is static. It includes its imagery, vectors and observation data f
 
 ## Published observations
 
-- **Lower Limpopo, Mozambique.** Downloaded NASA GIBS Terra MODIS band 7/2/1 composites for 17 December 2025 and 25 January 2026. The app compares these optical observations and links to NASA's NISAR observations on 5 and 17 January 2026. The optical view describes visible change. It does not compute a flood area.
+- **Lower Limpopo, Mozambique.** Downloaded NASA GIBS Terra MODIS band 7/2/1 composites for 17 December 2025 and 25 January 2026. The app compares these optical observations and links to NASA's NISAR observations on 5 and 17 January 2026. The default flood layer displays NASA LANCE’s VIIRS three-day flood classification ending 25 January 2026. TerraPulse maps the published classes and exposes them on click.
 - **Northern Venezuela.** Downloaded the numeric NASA JPL ARIA raster for NISAR's 13–25 June 2026 pair, reprojected and sampled it, and published the display raster and little-endian numeric grid. The grid conservatively suppresses the service's ambiguous zero fill. The two USGS event locations and the M7.5 ShakeMap contours provide separate earthquake context.
 - **Pine Island Glacier.** Downloaded NASA GIBS Terra MODIS true-color imagery from 14 February 2026. The case links to NASA's ICESat-2 surface-height change visualization and the verified October NISAR GOFF record. It makes no pixel-level ice-loss claim.
 
