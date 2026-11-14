@@ -98,3 +98,10 @@ dialog a { color:var(--blue); text-decoration:underline; text-underline-offset:3
   .legend { bottom:151px; right:9px; }
   .swipe { bottom:151px; right:10px; left:10px; justify-content:space-between; }
 }
+.control { display:inline-flex; align-items:center; gap:7px; background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:5px 7px; font-size:12px; pointer-events:auto; }
+.control select,.control input { color:#e6ebf1; background:#24303d; border:1px solid var(--line); border-radius:3px; font:inherit; padding:2px 4px; }
+#search-results { max-height:260px; overflow:auto; }
+.provider-link { display:block; color:var(--blue); margin-top:6px; text-decoration:underline; }
+.maplibregl-popup details { margin-top:7px; }
+.maplibregl-popup summary { cursor:pointer; }
+.maplibregl-popup ul { list-style:none; margin:5px 0 0; padding:0; max-height:125px; overflow:auto; }

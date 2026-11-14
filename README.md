@@ -30,3 +30,9 @@ python scripts/prepare_data.py
 The repository includes the processed outputs for all three cases. The [NASA Earthdata GIBS](https://www.earthdata.nasa.gov/data/projects/gibs), [NASA JPL ARIA](https://aria.jpl.nasa.gov/), [USGS](https://earthquake.usgs.gov/) and Natural Earth products retain their own terms and attribution. The NASA Space Apps logo identifies the event. This is a participant project.
 
 The map presents dated observations. Forecast models and raw Earthdata processing beyond the published ARIA raster are future work.
+
+## Worldwide map
+
+The three hazard tabs open worldwide catalogs. The default earthquake view shows magnitude 4.0+ and offers magnitude filters. Flood reports come from GDACS, with a separate dated NASA LANCE VIIRS satellite layer (visible after zooming in). Glacier points show the latest available annual mass balance and up to 12 recorded years from WGMS. These are monitored sites, and dates vary by site. Outlined markers open the detailed satellite cases.
+
+Refresh the compact provider snapshots with `python scripts/prepare_world.py /path/to/DOI-WGMS-FoG-2026-02-10.zip`. The WGMS source is [Fluctuations of Glaciers Database, release 2026-02-10](https://doi.org/10.5904/wgms-fog-2026-02-10).

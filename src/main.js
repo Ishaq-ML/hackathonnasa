@@ -4,6 +4,7 @@ import { feature } from 'topojson-client';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 import { observations } from './cases.js';
+import { worldExplorer, globalFloodDate } from './world.js';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -12,10 +13,16 @@ const byId = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const normalize = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const getQuery = () => new URLSearchParams(location.search);
-const selectedFromUrl = () => observations.find(item => item.id === getQuery().get('case')) || observations.find(item => item.hazard === 'Earthquakes');
+const hazards = ['Earthquakes','Floods','Glaciers'];
+const selectedFromUrl = () => observations.find(item => item.id === getQuery().get('case')) ?? null;
+const hazardFromUrl = () => hazards.find(item => item.toLowerCase() === getQuery().get('hazard')) ?? 'Earthquakes';
 const modeFromUrl = item => item.modes.find(mode => mode.id === getQuery().get('layer'))?.id || item.modes[0].id;
 let current = selectedFromUrl();
-let mode = modeFromUrl(current);
+let hazard = current?.hazard ?? hazardFromUrl();
+let mode = current ? modeFromUrl(current) : null;
+let minMagnitude = 4;
+let floodDate = globalFloodDate;
+let floodTiles = false;
 let map;
 let popup;
 let markers = [];
@@ -30,11 +37,34 @@ const background = { version:8, sources:{}, layers:[{id:'water',type:'background
 const attribution = 'NASA GIBS / Blue Marble · NASA JPL/ARIA · USGS · Natural Earth';
 const search = byId('search');
 const searchResults = byId('search-results');
+const world = worldExplorer({
+  json, chooseCase:selectCase,
+  onChange() {
+    if (!current) { renderWorldCard(); renderSearch(); }
+  },
+  inspect:showWorldPoint
+});
+function selectWorld(nextHazard) {
+  if (hazard === nextHazard && !current) return;
+  hazard = nextHazard;
+  current = null;
+  mode = null;
+  search.value = '';
+  renderSearch();
+  setUrl(false);
+  render();
+}
+function renderWorldCard() {
+  const info = world.info(hazard,minMagnitude,floodDate);
+  byId('record').innerHTML = `<h2 tabindex="-1" id="case-heading">${info.label}</h2><p class="time">${info.caption}</p>`;
+  byId('evidence').innerHTML = `<div class="evidence-details"><h3 id="point-title" hidden></h3><p id="point-copy" aria-live="polite">${info.hint}</p></div><button type="button" class="quiet" data-sources>Sources</button>`;
+}
 
 function selectCase(id) {
   const found = observations.find(item => item.id === id);
   if (!found || found === current) return;
   current = found;
+  hazard = current.hazard;
   mode = current.modes[0].id;
   setUrl(false);
   search.value = '';
@@ -46,39 +76,72 @@ function renderSearch() {
   searchResults.hidden = !query;
   if (!query) return;
   const matches = observations.filter(item => normalize([item.place,item.location,...item.aliases].join(' ')).includes(query));
-  searchResults.innerHTML = matches.length ? matches.map(item =>
-    `<button class="search-result" type="button" data-id="${item.id}">${item.place} · ${item.short}</button>`
-  ).join('') : '<p class="empty">No observations for this place.</p>';
+  const regionMatches = world.find(hazard, query, normalize);
+  const buttons = [
+    ...matches.map(item => `<button class="search-result" type="button" data-id="${item.id}">${item.place} · detailed case</button>`),
+    ...regionMatches.map(item => `<button class="search-result" type="button" data-entry="${escape(item.id)}">${escape(item.name)}</button>`),
+  ];
+  searchResults.innerHTML = buttons.join('') || '<p class="empty">No matching observations in this tab.</p>';
 }
 search.addEventListener('input', renderSearch);
 search.addEventListener('keydown', event => {
   if (event.key === 'Enter') searchResults.querySelector('button')?.click();
   if (event.key === 'Escape') { search.value = ''; renderSearch(); }
 });
-function selectFromButton(event) {
-  const button = event.target.closest('[data-id]');
+searchResults.addEventListener('click', event => {
+  const button = event.target.closest('button');
   if (!button) return;
-  selectCase(button.dataset.id);
+  if (button.dataset.id) selectCase(button.dataset.id);
+  if (button.dataset.entry && mapReady) {
+    const id = button.dataset.entry;
+    if (current) selectWorld(hazard);
+    world.open(hazard,id,map).catch(() => {});
+  }
   search.value = '';
   renderSearch();
-  byId('case-heading').focus({preventScroll:true});
-}
-searchResults.addEventListener('click', selectFromButton);
-byId('cases').addEventListener('click', selectFromButton);
+  byId('case-heading')?.focus({preventScroll:true});
+});
+byId('cases').addEventListener('click', event => {
+  const button = event.target.closest('[data-hazard]');
+  if (!button) return;
+  selectWorld(button.dataset.hazard);
+  byId('cases').querySelector('[aria-current=true]')?.focus({preventScroll:true});
+});
 window.addEventListener('popstate', () => {
   current = selectedFromUrl();
-  mode = modeFromUrl(current);
+  hazard = current?.hazard ?? hazardFromUrl();
+  mode = current ? modeFromUrl(current) : null;
   render();
 });
 function renderTabs() {
-  const order=['Earthquakes','Floods','Glaciers'];
-  byId('cases').innerHTML = order.map(hazard => {
-    const item=observations.find(entry => entry.hazard === hazard);
-    return `<button class="tab" type="button" data-id="${item.id}" aria-current="${item===current}">${hazard}</button>`;
-  }).join('');
+  byId('cases').innerHTML = hazards.map(item =>
+    `<button class="tab" type="button" data-hazard="${item}" aria-current="${item===hazard}">${item}</button>`
+  ).join('');
 }
+byId('map-controls').addEventListener('change', event => {
+  if (event.target.id === 'magnitude') minMagnitude = Number(event.target.value);
+  else if (event.target.id === 'flood-date' && event.target.value) floodDate = event.target.value;
+  else return;
+  if (!current && mapReady) {
+    renderWorldCard();
+    updateMap();
+  }
+});
 
 byId('map-controls').addEventListener('click', event => {
+  if (event.target.closest('[data-world]')) {
+    selectWorld(hazard);
+    return;
+  }
+  if (event.target.closest('[data-flood-tiles]')) {
+    floodTiles = !floodTiles;
+    render();
+    if (floodTiles && mapReady && map.getZoom() < 5) {
+      byId('point-copy').textContent = 'Zoom in to see the VIIRS flood composite.';
+    }
+    byId('map-controls').querySelector('[data-flood-tiles]')?.focus();
+    return;
+  }
   const button = event.target.closest('[data-mode]');
   if (!button || button.dataset.mode === mode) return;
   mode = button.dataset.mode;
@@ -88,24 +151,54 @@ byId('map-controls').addEventListener('click', event => {
 });
 byId('evidence').addEventListener('click', event => {
   if (!event.target.closest('[data-sources]')) return;
-  byId('reference-content').innerHTML = `<div class="label">Data and methods</div><h2>${current.place}</h2><p>${current.method}</p><ul>${
-    current.sources.map(([label, url]) => `<li><a class="text-link" href="${url}" target="_blank" rel="noopener">${label}</a></li>`).join('')
+  const source = current ?? {...world.info(hazard,minMagnitude,floodDate),place:hazard};
+  byId('reference-content').innerHTML = `<div class="label">Data and methods</div><h2>${source.place}</h2><p>${source.method}</p><ul>${
+    source.sources.map(([label, url]) => `<li><a class="text-link" href="${url}" target="_blank" rel="noopener">${label}</a></li>`).join('')
   }</ul>`;
   byId('reference').showModal();
 });
 
 function setUrl(replace) {
   const url = new URL(location.href);
-  url.searchParams.set('case',current.id);
-  url.searchParams.set('layer',mode);
+  url.searchParams.set('hazard',hazard.toLowerCase());
+  if (current) {
+    url.searchParams.set('case',current.id);
+    url.searchParams.set('layer',mode);
+  } else {
+    url.searchParams.delete('case');
+    url.searchParams.delete('layer');
+  }
   history[replace ? 'replaceState' : 'pushState'](null,'',url);
 }
 
 function render() {
   renderTabs();
+  if (!current) {
+    renderWorldCard();
+    const options = [2.5,4,5,6].map(value => `<option value="${value}"${value===minMagnitude?' selected':''}>M${value.toFixed(1)}+</option>`).join('');
+    const controls = {
+      Earthquakes:`<label class="control">Magnitude <select id="magnitude">${options}</select></label>`,
+      Floods:`<button type="button" data-flood-tiles aria-pressed="${floodTiles}">Satellite layer</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
+      Glaciers:'',
+    };
+    byId('map-controls').innerHTML = controls[hazard];
+    const legends = {
+      Earthquakes:'<div class="key-list"><span><i style="--key:#f0ae70;border-radius:50%"></i> Earthquake / cluster</span><span>◎ Detailed NISAR case</span></div>',
+      Floods:'<div class="key-list"><span><i style="--key:#65c5fa;border-radius:50%"></i> GDACS flood report</span>'
+        + (floodTiles ? '<span><i style="--key:#fa1e24"></i> Flood <i style="--key:#32d2f5"></i> Surface water</span><span><i style="--key:#ffff00"></i> Recurring flood <i style="--key:#afafaf"></i> Insufficient data</span>' : '')
+        + '<span>◎ Detailed flood case</span></div>',
+      Glaciers:'<div class="key-list"><span><i style="--key:#f39678"></i> Latest annual loss</span><span><i style="--key:#93bef5"></i> Latest zero or gain</span><span>◎ Detailed ice imagery</span></div>',
+    };
+    byId('legend').innerHTML = legends[hazard];
+    byId('map-note').textContent = '';
+    renderOverlay();
+    if (mapReady) updateMap();
+    return;
+  }
   const selected = current.modes.find(item => item.id === mode);
   byId('record').innerHTML = `<h2 tabindex="-1" id="case-heading">${current.place}</h2><p class="time">${selected.date ?? current.date}</p>`;
-  byId('map-controls').innerHTML = current.modes.length > 1 ? current.modes.map(item => `<button type="button" data-mode="${item.id}" aria-pressed="${item.id===mode}">${item.label}</button>`).join('') : '';
+  byId('map-controls').innerHTML = '<button type="button" data-world>← Worldwide</button>' +
+    (current.modes.length > 1 ? current.modes.map(item => `<button type="button" data-mode="${item.id}" aria-pressed="${item.id===mode}">${item.label}</button>`).join('') : '');
   byId('evidence').innerHTML = `<div class="evidence-details"><h3 id="point-title">${selected.label}</h3><p id="point-copy" aria-live="polite">${selected.hint ?? current.evidence}</p></div><button type="button" class="quiet" data-sources>Sources</button>`;
   const legends = {
     displacement: '<strong>Displacement · cm</strong><div class="gradient"></div><div class="legend-values"><span>−50</span><span>0</span><span>+50</span></div>',
@@ -121,6 +214,7 @@ function render() {
 function renderOverlay() {
   overlay?.remove();
   overlay = null;
+  if (!current) return;
   const selected = current.modes.find(item => item.id === mode);
   if (mode !== 'compare' && (!selected?.image || byId('map-fallback').hidden)) return;
   overlay = document.createElement('div');
@@ -143,7 +237,7 @@ async function json(file) {
 
 async function startMap() {
   try {
-    map = new maplibregl.Map({container:'map',style:background,center:[31,-24],zoom:6,attributionControl:false,maxPitch:0});
+    map = new maplibregl.Map({container:'map',style:background,center:[31,-24],zoom:6,attributionControl:false,maxPitch:0,minZoom:-.1});
     map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'top-right');
     map.addControl(new maplibregl.ScaleControl({unit:'metric'}), 'bottom-right');
     map.addControl(new maplibregl.AttributionControl({customAttribution:attribution,compact:true}), 'bottom-right');
@@ -170,11 +264,22 @@ async function startMap() {
 async function updateMap() {
   const version = ++updateVersion;
   popup?.remove();
+  world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
   for (const id of ['scene','contours','regional-context']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
+  }
+  if (!current) {
+    if (focusedCase !== 'world') {
+      focusedCase = 'world';
+      const width = map.getContainer().clientWidth;
+      map.jumpTo({center:[0,16],zoom:Math.max(-.1,Math.min(2,Math.log2(width/525)))});
+    }
+    world.draw(map,hazard,minMagnitude,floodDate,observations.filter(entry=>entry.hazard===hazard),floodTiles)
+      .catch(() => { if (version === updateVersion) byId('map-note').textContent='The observation catalog could not load.'; });
+    return;
   }
   const [[w,s],[e,n]] = current.bounds;
   if (focusedCase !== current.id) {
@@ -240,7 +345,44 @@ function showPoint(coords,title,copy) {
     .setHTML(`<strong>${escape(title)}</strong><p>${escape(copy)}</p>`).addTo(map);
 }
 
+function showWorldPoint(coords, item) {
+  if (current) return;
+  const title = byId('point-title');
+  title.hidden = false;
+  showPoint(coords,item.title,item.description);
+  const content = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = item.title;
+  const detail = document.createElement('p');
+  detail.textContent = item.description;
+  content.append(name, detail);
+  if (item.balances?.length) {
+    const history = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Annual history · m w.e.';
+    const list = document.createElement('ul');
+    for (const [year, value] of [...item.balances].reverse()) {
+      const row = document.createElement('li');
+      row.textContent = `${year} · ${value > 0 ? '+' : ''}${value.toFixed(2)}`;
+      list.append(row);
+    }
+    history.append(summary,list);
+    content.append(history);
+  }
+  for (const [label, url] of item.links) {
+    const link = document.createElement('a');
+    link.textContent = label;
+    link.className = 'provider-link';
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    content.append(link);
+  }
+  popup.setDOMContent(content);
+}
+
 async function inspectPoint(event) {
+  if (!current) return world.click(event);
   const version = updateVersion;
   const {lng,lat}=event.lngLat;
   const coords=[lng,lat];
