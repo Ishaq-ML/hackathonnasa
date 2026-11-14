@@ -200,5 +200,5 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     inspect(item.coords,details(hazard,item));
   }
 
-  return { info, draw, remove, click, find, open };
+  return { info, draw, remove, click, find, open, load, details, visibleItems };
 }

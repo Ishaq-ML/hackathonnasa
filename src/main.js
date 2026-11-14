@@ -28,6 +28,8 @@ let popup;
 let markers = [];
 let overlay;
 let mapReady = false;
+let mapUnavailable = false;
+let fallbackVersion = 0;
 let quakePromise;
 const grids = new Map();
 let updateVersion = 0;
@@ -96,6 +98,9 @@ searchResults.addEventListener('click', event => {
     const id = button.dataset.entry;
     if (current) selectWorld(hazard);
     world.open(hazard,id,map).catch(() => {});
+  } else if (button.dataset.entry && mapUnavailable) {
+    const item = world.visibleItems(hazard,0).find(row=>row.id===button.dataset.entry);
+    if (item) showFallbackDetail(world.details(hazard,item));
   }
   search.value = '';
   renderSearch();
@@ -122,9 +127,10 @@ byId('map-controls').addEventListener('change', event => {
   if (event.target.id === 'magnitude') minMagnitude = Number(event.target.value);
   else if (event.target.id === 'flood-date' && event.target.value) floodDate = event.target.value;
   else return;
-  if (!current && mapReady) {
+  if (!current) {
     renderWorldCard();
-    updateMap();
+    if (mapReady) updateMap();
+    if (mapUnavailable) drawFallback();
   }
 });
 
@@ -193,6 +199,7 @@ function render() {
     byId('map-note').textContent = '';
     renderOverlay();
     if (mapReady) updateMap();
+    if (mapUnavailable) drawFallback();
     return;
   }
   const selected = current.modes.find(item => item.id === mode);
@@ -209,6 +216,7 @@ function render() {
   byId('map-note').textContent = '';
   renderOverlay();
   if (mapReady) updateMap();
+  if (mapUnavailable) drawFallback();
 }
 
 function renderOverlay() {
@@ -216,7 +224,7 @@ function renderOverlay() {
   overlay = null;
   if (!current) return;
   const selected = current.modes.find(item => item.id === mode);
-  if (mode !== 'compare' && (!selected?.image || byId('map-fallback').hidden)) return;
+  if (mode !== 'compare' && (!selected?.image || !mapUnavailable)) return;
   overlay = document.createElement('div');
   if (mode === 'compare') {
     overlay.className = 'photo-compare';
@@ -244,7 +252,8 @@ async function startMap() {
     map.on('click', inspectPoint);
     await new Promise(resolve => map.once('load', resolve));
   } catch {
-    byId('map-fallback').hidden = false;
+    mapUnavailable = true;
+    drawFallback();
     renderOverlay();
     return;
   }
@@ -260,6 +269,62 @@ async function startMap() {
   }
   updateMap();
 }
+
+function showFallbackDetail(item) {
+  const title = byId('point-title');
+  title.hidden = false;
+  title.textContent = item.title;
+  const description = byId('point-copy');
+  description.textContent = item.description;
+  for (const [label,url] of item.links) {
+    const link = document.createElement('a');
+    link.className = 'provider-link';
+    link.textContent = label;
+    link.href = url;
+    description.append(link);
+  }
+}
+
+let worldOutline;
+async function drawFallback() {
+  const version = ++fallbackVersion;
+  const panel = byId('map-fallback');
+  panel.hidden = Boolean(current);
+  if (current) return;
+  const selected = hazard;
+  try {
+    worldOutline ||= json('world.json').then(topology=>feature(topology,topology.objects.countries));
+    const [land] = await Promise.all([worldOutline,world.load(selected)]);
+    if (version !== fallbackVersion || current) return;
+    renderWorldCard();
+    renderSearch();
+    const project = ([lon,lat]) => [((lon+180)*2).toFixed(1), ((88-lat)*2).toFixed(1)];
+    const path = rings => rings.map(ring=>ring.map((p,i)=>(i?'L':'M')+project(p).join(',')).join('')+'Z').join('');
+    const countries = land.features.map(({geometry})=>geometry.type==='Polygon' ? path(geometry.coordinates)
+      : geometry.coordinates.map(path).join('')).join('');
+    const markers = world.visibleItems(selected,minMagnitude).map(item=>{
+      const [x,y]=project(item.coords);
+      const color=selected==='Glaciers'
+        ? (item.balances.at(-1)[1]<0?'#f39678':'#93bef5')
+        : selected==='Floods'?'#65c5fa':'#f0ae70';
+      return `<circle data-entry="${escape(item.id)}" cx="${x}" cy="${y}" r="${selected==='Earthquakes'?2:3}" fill="${color}"><title>${escape(item.name)}</title></circle>`;
+    }).join('');
+    const samples = observations.filter(item=>item.hazard===selected).map(item=>{
+      const [[w,s],[e,n]]=item.bounds;
+      const [x,y]=project([(w+e)/2,(s+n)/2]);
+      return `<circle data-case="${item.id}" cx="${x}" cy="${y}" r="5" fill="#171c23" stroke="#fff" stroke-width="2"><title>${escape(item.place)} · detailed case</title></circle>`;
+    }).join('');
+    panel.innerHTML = `<svg viewBox="0 0 720 352" aria-label="${escape(selected)} world map"><path fill="#25303c" stroke="#465768" stroke-width=".45" fill-rule="evenodd" d="${countries}"></path>${markers}${samples}</svg>`;
+    if (selected==='Floods' && floodTiles) byId('map-note').textContent='The satellite tile layer requires WebGL.';
+  } catch {
+    if (version === fallbackVersion) panel.textContent='The observation catalog could not load.';
+  }
+}
+byId('map-fallback').addEventListener('click',event=>{
+  if (event.target.dataset.case) selectCase(event.target.dataset.case);
+  const hit = world.visibleItems(hazard,minMagnitude).find(item=>item.id===event.target.dataset.entry);
+  if (hit) showFallbackDetail(world.details(hazard,hit));
+});
 
 async function updateMap() {
   const version = ++updateVersion;
