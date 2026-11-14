@@ -1,6 +1,6 @@
 const definitions = {
   Earthquakes: {
-    file: 'world-quakes.json', label: 'Earthquakes worldwide', color: '#f0ae70',
+    file: 'world-quakes.json', label: 'Earthquakes worldwide', color: '#f3cf74',
     source: ['USGS earthquake catalog', 'https://earthquake.usgs.gov/earthquakes/map/'],
     hint: 'Select an epicenter for magnitude and depth.',
   },
@@ -59,9 +59,12 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     return pending.get(hazard);
   }
 
-  function visibleItems(hazard, minMagnitude) {
-    const all = catalogs.get(hazard)?.items ?? [];
-    return hazard === 'Earthquakes' ? all.filter(q => q.magnitude >= minMagnitude) : all;
+  function visibleItems(hazard, minMagnitude, days = 30) {
+    const catalog = catalogs.get(hazard);
+    if (!catalog) return [];
+    if (hazard !== 'Earthquakes') return catalog.items;
+    const since = catalog.updated - days * 86400000;
+    return catalog.items.filter(q => q.magnitude >= minMagnitude && q.time >= since && q.time <= catalog.updated);
   }
 
   function details(hazard, item) {
@@ -87,19 +90,19 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     };
   }
 
-  function info(hazard, minMagnitude, date) {
+  function info(hazard, minMagnitude, date, days) {
     const base = definitions[hazard];
     const catalog = catalogs.get(hazard);
-    const count = visibleItems(hazard, minMagnitude).length;
+    const count = visibleItems(hazard, minMagnitude, days).length;
     const notes = {
-      Earthquakes: catalog ? `${count.toLocaleString()} earthquakes · 30 days to ${namedDay(catalog.updated)} · M${minMagnitude.toFixed(1)}+` : 'USGS · recent earthquakes',
+      Earthquakes: catalog ? `${count.toLocaleString()} earthquakes · ${days} ${days === 1 ? 'day' : 'days'} to ${namedDay(catalog.updated)} · M${minMagnitude.toFixed(1)}+` : 'USGS · recent earthquakes',
       Floods: catalog ? `${count} recent GDACS reports · NASA imagery through ${namedDay(date)}` : `NASA imagery through ${namedDay(date)}`,
       Glaciers: catalog ? `${count} glaciers with reported annual mass balance since 2000` : 'World Glacier Monitoring Service',
     };
     return { ...base, caption: notes[hazard], count,
       sources: hazard === 'Floods' ? [base.source, floodSource] : [base.source],
       method: hazard === 'Earthquakes'
-        ? 'This view maps the most recent 30 days of earthquakes in the bundled USGS catalog snapshot. Epicenter circles show location and magnitude.'
+        ? 'Earthquake locations, depths and magnitudes come from a dated USGS catalog snapshot. Time filters count back from the snapshot timestamp.'
         : hazard === 'Floods'
           ? 'Points show locations in the bundled GDACS flood-report snapshot. The optional NASA VIIRS layer is a separate, dated three-day composite. Cloud-obscured areas may have insufficient data. Report locations and satellite detections can cover different dates.'
           : 'Points show sites in the WGMS Fluctuations of Glaciers database with annual mass-balance records since 2000. The most recent available year varies by glacier. A negative value means the glacier lost mass over that reporting year. Coverage is limited to the included monitoring records.',
@@ -114,11 +117,11 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     entries = new Map();
   }
 
-  function draw(map, hazard, minMagnitude, date, cases, includeFloodTiles) {
+  function draw(map, hazard, minMagnitude, date, cases, includeFloodTiles, days) {
     currentMap = map;
     layerHazard = hazard;
     const base = definitions[hazard];
-    const items = visibleItems(hazard, minMagnitude);
+    const items = visibleItems(hazard, minMagnitude, days);
     entries = new Map(items.map(item => [item.id, item]));
     const point = (coords, properties) => ({type:'Feature', geometry:{type:'Point', coordinates:coords},properties});
     if (hazard === 'Floods' && includeFloodTiles) {
@@ -132,8 +135,8 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     }))};
     map.addSource(dataSource,{type:'geojson', data, cluster:true,clusterRadius:25,clusterMaxZoom:4});
     map.addLayer({id:'world-clusters',type:'circle',source:dataSource,filter:['has','point_count'],
-      paint:{'circle-color':base.color,'circle-radius':['step',['get','point_count'],6,10,9,40,13,120,17],
-        'circle-opacity':.55,'circle-stroke-width':1,'circle-stroke-color':base.color}});
+      paint:{'circle-color':hazard === 'Glaciers' ? '#e1e6e5' : base.color,'circle-radius':['step',['get','point_count'],7,10,10,40,14,120,18],
+        'circle-opacity':.67,'circle-stroke-width':1,'circle-stroke-color':'#18282c'}});
     map.addLayer({id:'world-markers',type:'circle',source:dataSource,filter:['!', ['has','point_count']],
       paint:{'circle-color':hazard === 'Glaciers'
         ? ['case',['<',['get','metric'],0],'#f39678','#93bef5'] : base.color,
@@ -150,7 +153,7 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     const activeSource = map.getSource(dataSource);
     return load(hazard).then(() => {
       if (currentMap !== map || layerHazard !== hazard || map.getSource(dataSource) !== activeSource) return;
-      const updated = visibleItems(hazard,minMagnitude);
+      const updated = visibleItems(hazard,minMagnitude,days);
       entries = new Map(updated.map(item=>[item.id,item]));
       map.getSource(dataSource)?.setData({type:'FeatureCollection',features:updated.map(item => point(item.coords, {
         id:item.id,metric:item.magnitude ?? item.balances?.at(-1)?.[1] ?? 0,
@@ -187,9 +190,9 @@ export function worldExplorer({ json, inspect, chooseCase, onChange }) {
     }
   }
 
-  function find(hazard, query, normalize) {
+  function find(hazard, query, normalize, days = 30) {
     if (!query) return [];
-    return (catalogs.get(hazard)?.items ?? []).filter(item => normalize(item.name).includes(query)).slice(0,7);
+    return visibleItems(hazard, 0, days).filter(item => normalize(item.name).includes(query)).slice(0,7);
   }
 
   async function open(hazard, id, map) {

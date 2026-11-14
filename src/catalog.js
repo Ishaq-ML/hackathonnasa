@@ -12,8 +12,9 @@ export function mountCatalog({ byId, view, world, normalize, openCase, openEntry
   async function refresh() {
     const version = ++request;
     if (panel.hidden) return;
-    const { hazard, minMagnitude } = view();
+    const { hazard, minMagnitude, days, caseId } = view();
     if (hazard !== previousHazard) {
+      if (previousHazard) input.value = '';
       previousHazard = hazard;
       page = 1;
     }
@@ -31,32 +32,40 @@ export function mountCatalog({ byId, view, world, normalize, openCase, openEntry
     const query = normalize(input.value.trim());
     const detailed = cases.filter(item => item.hazard === hazard &&
       normalize([item.place, item.location, ...item.aliases].join(' ')).includes(query));
-    const records = world.visibleItems(hazard, minMagnitude).filter(item => normalize(item.name).includes(query));
-    const items = [
-      ...detailed.map(item => ({ id: item.id, detail: true, title: item.place, description: item.date })),
-      ...records.map(item => {
-        const { title, description } = world.details(hazard, item);
-        return { id: item.id, title: hazard === 'Earthquakes' ? item.name : title,
-          description: hazard === 'Earthquakes' ? title + ' · ' + description.slice(item.name.length + 3) : description };
-      }),
-    ];
-    const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+    const records = world.visibleItems(hazard, minMagnitude, days).filter(item => normalize(item.name).includes(query));
+    const entries = [...detailed, ...records];
+    const pageCount = Math.max(1, Math.ceil(entries.length / pageSize));
     page = Math.min(page, pageCount);
-    results.replaceChildren(...items.slice((page - 1) * pageSize, page * pageSize).map(item => {
+    const items = entries.slice((page - 1) * pageSize, page * pageSize).map(item => {
+      if (item.modes) return { id: item.id, detail: true, title: item.place, description: item.date, mark: '◎' };
+      const { title, description } = world.details(hazard, item);
+      return { id: item.id, title: hazard === 'Earthquakes' ? item.name : title.replace(/^Flood report · /, ''),
+        mark: hazard === 'Earthquakes' ? item.magnitude.toFixed(1) : '•',
+        description: hazard === 'Earthquakes' ? description.slice(item.name.length + 3) : description };
+    });
+    results.replaceChildren(...items.map(item => {
       const row = document.createElement('li');
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset[item.detail ? 'case' : 'entry'] = item.id;
+      if (item.id === caseId) button.setAttribute('aria-current', 'true');
+      const badge = document.createElement('span');
+      badge.className = 'row-mark';
+      badge.textContent = item.mark;
+      if (hazard === 'Earthquakes' && !item.detail) badge.setAttribute('aria-label', `Magnitude ${item.mark}`);
+      else badge.setAttribute('aria-hidden', 'true');
+      const copy = document.createElement('div');
       const title = document.createElement('strong');
       title.textContent = item.title;
       const detail = document.createElement('span');
       detail.textContent = item.description;
-      button.append(title, detail);
+      copy.append(title, detail);
+      button.append(badge, copy);
       row.append(button);
       return row;
     }));
-    byId('browse-count').textContent = items.length
-      ? `${items.length.toLocaleString()} results${hazard === 'Earthquakes' ? ` · M${minMagnitude.toFixed(1)}+` : ''}`
+    byId('browse-count').textContent = entries.length
+      ? `${entries.length.toLocaleString()} results${hazard === 'Earthquakes' ? ` · M${minMagnitude.toFixed(1)}+` : ''}`
       : 'No observations match this place.';
     pages.hidden = pageCount === 1;
     pages.innerHTML = `<button type="button" class="quiet" data-step="-1"${page === 1 ? ' disabled' : ''}>Previous</button><span>${page} / ${pageCount}</span><button type="button" class="quiet" data-step="1"${page === pageCount ? ' disabled' : ''}>Next</button>`;
@@ -76,7 +85,7 @@ export function mountCatalog({ byId, view, world, normalize, openCase, openEntry
   results.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (button?.dataset.case) openCase(button.dataset.case);
-    if (button?.dataset.entry) openEntry(view().hazard, button.dataset.entry);
+    if (button?.dataset.entry) openEntry(view().hazard, button.dataset.entry).catch(() => {});
   });
   return refresh;
 }

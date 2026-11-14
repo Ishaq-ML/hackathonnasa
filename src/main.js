@@ -1,6 +1,4 @@
-import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { feature } from 'topojson-client';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 import { observations } from './cases.js';
@@ -8,8 +6,7 @@ import { worldExplorer, globalFloodDate } from './world.js';
 import { mountAssistant, normalize } from './assistant.js';
 import { mountCatalog } from './catalog.js';
 import { drawImagery, imagery } from './imagery.js';
-
-maplibregl.setWorkerUrl(workerUrl);
+import { basemapStyle, addBasemap, setBasemap, addPlates, plateSource, projectWorld } from './basemap.js';
 
 const asset = file => new URL(`${import.meta.env.BASE_URL}data/${file}`, location.origin).href;
 const byId = id => document.getElementById(id);
@@ -23,11 +20,17 @@ let current = selectedFromUrl();
 let hazard = current?.hazard ?? hazardFromUrl();
 let mode = current ? modeFromUrl(current) : null;
 let minMagnitude = 4;
+let days = 7;
+let plates = true;
+let platesPromise;
+let basemap = 'satellite';
+let fallbackCenter;
 let floodDate = globalFloodDate;
 let floodTiles = false;
 let imageryKey;
 let imageryDate;
 let map;
+let maplibregl;
 let popup;
 let markers = [];
 let overlay;
@@ -40,31 +43,31 @@ let updateVersion = 0;
 let focusedCase;
 let fallbackSelection;
 
-const background = { version:8, sources:{}, layers:[{id:'water',type:'background',paint:{'background-color':'#101924'}}] };
-const attribution = 'NASA GIBS / Blue Marble · NASA JPL/ARIA · USGS · Natural Earth';
-const search = byId('search');
-const searchResults = byId('search-results');
+const regions = {
+  Earthquakes: [['Algeria', 3, 36, 5], ['Japan', 138, 36, 5], ['California', -120, 36, 5], ['Chile', -71, -30, 5]],
+  Floods: [['Algeria', 5, 36, 6], ['South Asia', 87, 25, 4], ['Southern Africa', 32, -23, 4]],
+  Glaciers: [['Alps', 9, 46, 5], ['Himalaya', 83, 30, 5], ['Greenland', -41, 72, 4], ['Antarctica', -100, -75, 4]],
+};
 const world = worldExplorer({
   json, chooseCase:selectCase,
   onChange() {
-    if (!current) { renderWorldCard(); renderSearch(); }
+    if (!current && !fallbackSelection) renderWorldCard();
   },
   inspect:showWorldPoint
 });
 function selectWorld(nextHazard) {
   if (hazard === nextHazard && !current) return;
+  fallbackCenter = null;
   hazard = nextHazard;
   imageryKey = null;
   current = null;
   mode = null;
   fallbackSelection = null;
-  search.value = '';
-  renderSearch();
   setUrl(false);
   render();
 }
 function renderWorldCard() {
-  const info = world.info(hazard,minMagnitude,floodDate);
+  const info = world.info(hazard,minMagnitude,floodDate,days);
   byId('record').innerHTML = `<h2 tabindex="-1" id="case-heading">${info.label}</h2><p class="time">${info.caption}</p>`;
   byId('evidence').innerHTML = `<div class="evidence-details"><h3 id="point-title" hidden></h3><p id="point-copy" aria-live="polite">${info.hint}</p></div><button type="button" class="quiet" data-sources>Sources</button>`;
 }
@@ -77,36 +80,8 @@ function selectCase(id) {
   hazard = current.hazard;
   mode = current.modes[0].id;
   setUrl(false);
-  search.value = '';
-  renderSearch();
   render();
 }
-function renderSearch() {
-  const query = normalize(search.value.trim());
-  searchResults.hidden = !query;
-  if (!query) return;
-  const matches = observations.filter(item => normalize([item.place,item.location,...item.aliases].join(' ')).includes(query));
-  const regionMatches = world.find(hazard, query, normalize);
-  const buttons = [
-    ...matches.map(item => `<button class="search-result" type="button" data-id="${item.id}">${item.place} · detailed case</button>`),
-    ...regionMatches.map(item => `<button class="search-result" type="button" data-entry="${escape(item.id)}">${escape(item.name)}</button>`),
-  ];
-  searchResults.innerHTML = buttons.join('') || '<p class="empty">No matching observations in this tab.</p>';
-}
-search.addEventListener('input', renderSearch);
-search.addEventListener('keydown', event => {
-  if (event.key === 'Enter') searchResults.querySelector('button')?.click();
-  if (event.key === 'Escape') { search.value = ''; renderSearch(); }
-});
-searchResults.addEventListener('click', event => {
-  const button = event.target.closest('button');
-  if (!button) return;
-  if (button.dataset.id) selectCase(button.dataset.id);
-  if (button.dataset.entry) openEntry(hazard, button.dataset.entry).catch(() => {});
-  search.value = '';
-  renderSearch();
-  byId('case-heading')?.focus({preventScroll:true});
-});
 byId('cases').addEventListener('click', event => {
   const button = event.target.closest('[data-hazard]');
   if (!button) return;
@@ -119,6 +94,7 @@ window.addEventListener('popstate', () => {
   mode = current ? modeFromUrl(current) : null;
   imageryKey = null;
   fallbackSelection = null;
+  fallbackCenter = null;
   render();
 });
 function renderTabs() {
@@ -128,6 +104,7 @@ function renderTabs() {
 }
 byId('map-controls').addEventListener('change', event => {
   if (event.target.id === 'magnitude') minMagnitude = Number(event.target.value);
+  else if (event.target.id === 'quake-window') days = Number(event.target.value);
   else if (event.target.id === 'flood-date' && event.target.value) floodDate = event.target.value;
   else if (event.target.id === 'imagery-date' && event.target.value) imageryDate = event.target.value;
   else return;
@@ -137,10 +114,20 @@ byId('map-controls').addEventListener('change', event => {
     refreshCatalog();
     if (mapReady) updateMap();
     if (mapUnavailable) drawFallback();
+    const layer = imagery[imageryKey];
+    if (layer && mapReady && event.target.id === 'imagery-date') {
+      byId('map-note').textContent = `${layer.title} · ${imageryDate}${imageryKey === 'radar' && map.getZoom() < 4 ? ' · visible from regional zoom' : ''}`;
+    }
   }
 });
 
 byId('map-controls').addEventListener('click', event => {
+  if (event.target.closest('[data-plates]')) {
+    plates = !plates;
+    render();
+    byId('map-controls').querySelector('[data-plates]')?.focus();
+    return;
+  }
   if (event.target.closest('[data-world]')) {
     selectWorld(hazard);
     return;
@@ -162,8 +149,6 @@ byId('map-controls').addEventListener('click', event => {
     byId('map-controls').querySelector(`[data-imagery="${key}"]`)?.focus();
     return;
   }
-  const localCase = event.target.closest('[data-open-case]');
-  if (localCase) { selectCase(localCase.dataset.openCase); return; }
   const button = event.target.closest('[data-mode]');
   if (!button) return;
   openMode(button.dataset.mode);
@@ -184,9 +169,11 @@ function setImagery(key) {
 }
 byId('evidence').addEventListener('click', event => {
   if (!event.target.closest('[data-sources]')) return;
-  const source = current ?? {...world.info(hazard,minMagnitude,floodDate),place:hazard};
+  const source = current ?? {...world.info(hazard,minMagnitude,floodDate,days),place:hazard};
   const layer = !current && imagery[imageryKey];
-  const sources = layer ? [...source.sources, layer.source] : source.sources;
+  const sources = [...source.sources];
+  if (layer) sources.push(layer.source);
+  if (!current && hazard === 'Earthquakes' && plates) sources.push(plateSource);
   byId('reference-content').innerHTML = `<h2>${source.place}</h2><p>${source.method}</p>${layer ? `<p class="imagery-note">${layer.title} · ${imageryDate}. ${layer.description}</p>` : ''}<ul>${
     sources.map(([label, url]) => `<li><a class="text-link" href="${url}" target="_blank" rel="noopener">${label}</a></li>`).join('')
   }</ul>`;
@@ -208,14 +195,21 @@ function setUrl(replace) {
 
 function render() {
   renderTabs();
+  const selectedLayer = current?.modes.find(item => item.id === mode);
+  const stillImage = Boolean(selectedLayer?.compare || (mapUnavailable && selectedLayer?.image));
+  byId('basemap-control').hidden = stillImage;
+  byId('reset-map').hidden = stillImage;
+  byId('regions').innerHTML = current ? '' : regions[hazard].map(([name], index) =>
+    `<button class="quiet" type="button" data-region="${index}">${name}</button>`).join('');
   refreshCatalog();
   if (!current) {
     renderWorldCard();
     const options = [2.5,4,5,6].map(value => `<option value="${value}"${value===minMagnitude?' selected':''}>M${value.toFixed(1)}+</option>`).join('');
+    const periods = [1,7,30].map(value => `<option value="${value}"${value===days?' selected':''}>${value} ${value===1?'day':'days'}</option>`).join('');
     const controls = {
-      Earthquakes:`<label class="control">Magnitude <select id="magnitude">${options}</select></label>`,
-      Floods:`<button type="button" data-open-case="guelma-nisar">Guelma comparison</button><button type="button" data-flood-tiles aria-pressed="${floodTiles}">VIIRS floodwater</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
-      Glaciers:'<button type="button" data-open-case="pine-island-glacier">Pine Island comparison</button>',
+      Earthquakes:`<label class="control">Time <select id="quake-window">${periods}</select></label><label class="control">Magnitude <select id="magnitude">${options}</select></label><button type="button" data-plates aria-pressed="${plates}">Plate boundaries</button>`,
+      Floods:`<button type="button" data-flood-tiles aria-pressed="${floodTiles}">VIIRS floodwater</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
+      Glaciers:'',
     };
     const imageryControls = ['radar', ...({ Floods:['rain'], Glaciers:['snow'] }[hazard] ?? [])]
       .map(key => `<button type="button" data-imagery="${key}" aria-pressed="${key === imageryKey}">${imagery[key].title}</button>`).join('');
@@ -223,14 +217,14 @@ function render() {
     byId('map-controls').innerHTML = controls[hazard] + imageryControls + (layer
       ? `<label class="control">Date <input id="imagery-date" type="date" min="${layer.first}" max="${layer.latest}" value="${imageryDate}"></label>` : '');
     const legends = {
-      Earthquakes:'<div class="key-list"><span><i style="--key:#f0ae70;border-radius:50%"></i> Earthquake / cluster</span><span>◎ Detailed NISAR case</span></div>',
+      Earthquakes:`<div class="key-list"><span><i style="--key:#f3cf74;border-radius:50%"></i> Earthquake / cluster</span><span>◎ Radar case</span>${plates?'<span><i class="line-key" style="--key:#ffc086"></i> Plate boundary</span>':''}</div>`,
       Floods:'<div class="key-list"><span><i style="--key:#65c5fa;border-radius:50%"></i> GDACS flood report</span>'
         + (floodTiles ? '<span><i style="--key:#fa1e24"></i> Flood <i style="--key:#32d2f5"></i> Surface water</span><span><i style="--key:#ffff00"></i> Recurring flood <i style="--key:#afafaf"></i> Insufficient data</span>' : '')
         + '<span>◎ Detailed flood case</span></div>',
       Glaciers:'<div class="key-list"><span><i style="--key:#f39678"></i> Latest annual loss</span><span><i style="--key:#93bef5"></i> Latest zero or gain</span><span>◎ Detailed ice imagery</span></div>',
     };
     byId('legend').innerHTML = legends[hazard];
-    byId('map-note').textContent = imageryKey === 'radar' && !mapUnavailable ? 'Zoom in to see radar swaths.' : '';
+    byId('map-note').textContent = layer ? `${layer.title} · ${imageryDate}${imageryKey === 'radar' ? ' · visible from regional zoom' : ''}` : '';
     renderOverlay();
     if (mapReady) updateMap();
     if (mapUnavailable) drawFallback();
@@ -267,9 +261,13 @@ function renderOverlay() {
     overlay.querySelector('input').addEventListener('input', event => overlay.style.setProperty('--divider', `${event.target.value}%`));
   } else {
     overlay.className = 'single-photo';
-    overlay.innerHTML = `<img alt="${current.title}" src="${asset(selected.image)}">`;
+    overlay.innerHTML = `<img alt="${escape(current.title)}" src="${asset(selected.image)}">`;
+    if (['displacement', 'extent'].includes(mode)) {
+      overlay.classList.add('inspectable');
+      overlay.addEventListener('click', inspectFallbackImage);
+    }
   }
-  byId('map-frame').insertBefore(overlay, byId('map-controls').parentElement);
+  byId('map-frame').insertBefore(overlay, byId('map-frame').querySelector('.map-tools'));
 }
 
 async function json(file) {
@@ -278,35 +276,112 @@ async function json(file) {
   return response.json();
 }
 
+const plateData = () => (platesPromise ||= json('plate-boundaries.json').catch(error => {
+  platesPromise = null;
+  throw error;
+}));
+
+function resetView() {
+  fallbackCenter = null;
+  if (!mapReady) { if (mapUnavailable) drawFallback(); return; }
+  if (current) {
+    map.fitBounds(current.bounds, { padding: 48, duration: 0, maxZoom: 11 });
+    return;
+  }
+  const { clientWidth, clientHeight } = map.getContainer();
+  const zoom = Math.log2(Math.max(180, Math.min(clientWidth - 40, clientHeight * 1.38)) / 512);
+  map.jumpTo({ center: [0, 14], zoom });
+}
+
+byId('reset-map').addEventListener('click', resetView);
+byId('basemap').addEventListener('change', event => {
+  basemap = event.target.value;
+  if (mapReady) setBasemap(map, basemap);
+  else if (mapUnavailable) drawFallback();
+});
+byId('regions').addEventListener('click', event => {
+  const button = event.target.closest('[data-region]');
+  if (!button) return;
+  const [, lon, lat, zoom] = regions[hazard][Number(button.dataset.region)];
+  if (mapReady) map.easeTo({ center: [lon, lat], zoom, duration: 450 });
+  else if (mapUnavailable) {
+    fallbackCenter = { coords: [lon, lat], zoom };
+    drawFallback();
+  }
+});
+
 async function startMap() {
   try {
-    map = new maplibregl.Map({container:'map',style:background,center:[31,-24],zoom:6,attributionControl:false,maxPitch:0,minZoom:-.1});
+    maplibregl = await import('maplibre-gl');
+    maplibregl.setWorkerUrl(workerUrl);
+    map = new maplibregl.Map({
+      container: 'map', style: basemapStyle, center: [0, 14], zoom: 1, attributionControl: false,
+      renderWorldCopies: false, maxPitch: 0, minZoom: -2, maxZoom: 14, dragRotate: false,
+    });
+    map.touchZoomRotate.disableRotation();
     map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'top-right');
     map.addControl(new maplibregl.ScaleControl({unit:'metric'}), 'bottom-right');
-    map.addControl(new maplibregl.AttributionControl({customAttribution:attribution,compact:true}), 'bottom-right');
+    map.addControl(new maplibregl.AttributionControl({compact:true}), 'bottom-right');
     map.on('click', inspectPoint);
     await new Promise(resolve => map.once('load', resolve));
   } catch {
     mapUnavailable = true;
-    drawFallback();
-    renderOverlay();
+    render();
     return;
   }
+  addBasemap(map, asset('blue-marble.webp'));
+  setBasemap(map, basemap);
   mapReady = true;
-  try {
-    const topology = await json('world.json');
-    map.addSource('land', {type:'geojson',data:feature(topology,topology.objects.countries)});
-    map.addLayer({id:'land',type:'fill',source:'land',paint:{'fill-color':'#242e38'}});
-    map.addLayer({id:'borders',type:'line',source:'land',paint:{'line-color':'#4d5864','line-width':.7}});
-
-  } catch (error) {
-    console.error(error);
-  }
+  map.on('moveend', () => {
+    if (imageryKey === 'radar' && !current) {
+      byId('map-note').textContent = `NISAR radar · ${imageryDate}${map.getZoom() < 4 ? ' · visible from regional zoom' : ''}`;
+    }
+  });
   updateMap();
+}
+
+function inspectFallbackImage(event) {
+  const image = event.target.closest('img');
+  if (!image?.naturalWidth) return;
+  const rect = image.getBoundingClientRect();
+  const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  const x = (event.clientX - rect.left - (rect.width - width) / 2) / width;
+  const y = (event.clientY - rect.top - (rect.height - height) / 2) / height;
+  if (x < 0 || y < 0 || x >= 1 || y >= 1) return;
+  const [[w, s], [e, n]] = current.bounds;
+  const mercator = lat => Math.asinh(Math.tan(lat * Math.PI / 180));
+  const lat = Math.atan(Math.sinh((1 - y) * mercator(n) + y * mercator(s))) * 180 / Math.PI;
+  inspectPoint({ lngLat: { lng: w + (e - w) * x, lat } });
+}
+
+function massBalanceChart(values) {
+  const [first] = values[0];
+  const [last] = values.at(-1);
+  const left = 6;
+  const right = 234;
+  const top = 6;
+  const bottom = 58;
+  const high = Math.max(0, ...values.map(([, value]) => value));
+  const low = Math.min(0, ...values.map(([, value]) => value));
+  const x = year => first === last ? 120 : left + (year - first) * (right - left) / (last - first);
+  const y = value => top + (high - value) * (bottom - top) / (high - low || 1);
+  const baseline = y(0);
+  const bars = values.map(([year, value]) => {
+    const end = y(value);
+    const label = `${year}: ${value > 0 ? '+' : ''}${value.toFixed(2)} m water equivalent`;
+    return `<rect x="${x(year) - 3}" y="${Math.min(end, baseline)}" width="6" height="${Math.max(1, Math.abs(end - baseline))}" fill="${value < 0 ? '#f39678' : '#93bef5'}"><title>${label}</title></rect>`;
+  });
+  const block = document.createElement('figure');
+  block.className = 'balance-chart';
+  block.innerHTML = `<figcaption>Annual mass balance · m w.e.</figcaption><svg viewBox="0 0 240 65" aria-hidden="true"><line x1="0" x2="240" y1="${baseline}" y2="${baseline}" stroke="#a9bdba" stroke-opacity=".65"/>${bars.join('')}</svg><div class="chart-years"><span>${first}</span><span>${last === first ? '' : last}</span></div><details><summary>Annual values</summary><ul>${[...values].reverse().map(([year, value]) => `<li>${year} · ${value > 0 ? '+' : ''}${value.toFixed(2)}</li>`).join('')}</ul></details>`;
+  return block;
 }
 
 function showFallbackDetail(item) {
   const title = byId('point-title');
+  byId('evidence').querySelector('.balance-chart')?.remove();
   title.hidden = false;
   title.textContent = item.title;
   const description = byId('point-copy');
@@ -319,10 +394,7 @@ function showFallbackDetail(item) {
     description.append(link);
   }
   if (item.balances?.length) {
-    const recent = document.createElement('span');
-    recent.className = 'balance-history';
-    recent.textContent = item.balances.slice(-5).map(([year, value]) => `${year}: ${value > 0 ? '+' : ''}${value.toFixed(2)}`).join(' · ') + ' m w.e.';
-    description.append(recent);
+    byId('point-copy').after(massBalanceChart(item.balances));
   }
 }
 
@@ -335,45 +407,51 @@ async function openEntry(entryHazard, id) {
   if (item) {
     fallbackSelection = world.details(entryHazard, item);
     showFallbackDetail(fallbackSelection);
+    if (mapUnavailable) { fallbackCenter = { coords: item.coords, zoom: 5 }; drawFallback(); }
   }
 }
 
-let worldOutline;
 async function drawFallback() {
   const version = ++fallbackVersion;
   const panel = byId('map-fallback');
   panel.hidden = Boolean(current);
+  byId('fallback-credit').hidden = Boolean(current);
   if (current) return;
   const selected = hazard;
   try {
-    worldOutline ||= json('world.json').then(topology=>feature(topology,topology.objects.countries));
-    const [land] = await Promise.all([worldOutline,world.load(selected)]);
+    const showPlates = selected === 'Earthquakes' && plates;
+    const [boundaries] = await Promise.all([
+      showPlates ? plateData().catch(() => null) : null, world.load(selected),
+    ]);
     if (version !== fallbackVersion || current) return;
     renderWorldCard();
     if (fallbackSelection) showFallbackDetail(fallbackSelection);
-    renderSearch();
-    const project = ([lon,lat]) => [((lon+180)*2).toFixed(1), ((88-lat)*2).toFixed(1)];
-    const path = rings => rings.map(ring=>ring.map((p,i)=>(i?'L':'M')+project(p).join(',')).join('')+'Z').join('');
-    const countries = land.features.map(({geometry})=>geometry.type==='Polygon' ? path(geometry.coordinates)
-      : geometry.coordinates.map(path).join('')).join('');
-    const markers = world.visibleItems(selected,minMagnitude).map(item=>{
-      const [x,y]=project(item.coords);
-      const color=selected==='Glaciers'
-        ? (item.balances.at(-1)[1]<0?'#f39678':'#93bef5')
-        : selected==='Floods'?'#65c5fa':'#f0ae70';
-      return `<circle data-entry="${escape(item.id)}" cx="${x}" cy="${y}" r="${selected==='Earthquakes'?2:3}" fill="${color}"><title>${escape(item.name)}</title></circle>`;
+    const markers = world.visibleItems(selected, minMagnitude, days).map(item => {
+      const [x,y] = projectWorld(item.coords);
+      const color = selected === 'Glaciers' ? (item.balances.at(-1)[1] < 0 ? '#f39678' : '#93bef5')
+        : selected === 'Floods' ? '#65c5fa' : '#f3cf74';
+      const radius = fallbackCenter ? 1.6 : selected === 'Earthquakes' ? 3 : 4;
+      return `<circle data-entry="${escape(item.id)}" cx="${x}" cy="${y}" r="${radius}" fill="${color}"><title>${escape(item.name)}</title></circle>`;
     }).join('');
-    const samples = observations.filter(item=>item.hazard===selected).map(item=>{
-      const [[w,s],[e,n]]=item.bounds;
-      const [x,y]=project([(w+e)/2,(s+n)/2]);
-      return `<circle data-case="${item.id}" cx="${x}" cy="${y}" r="5" fill="#171c23" stroke="#fff" stroke-width="2"><title>${escape(item.place)} · detailed case</title></circle>`;
+    const samples = observations.filter(item => item.hazard === selected).map(item => {
+      const [[w,s],[e,n]] = item.bounds;
+      const [x,y] = projectWorld([(w+e)/2,(s+n)/2]);
+      return `<circle data-case="${item.id}" cx="${x}" cy="${y}" r="${fallbackCenter ? 3 : 6}" fill="#171c23" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escape(item.place)} · radar case</title></circle>`;
     }).join('');
-    panel.innerHTML = `<svg viewBox="0 0 720 352" aria-label="${escape(selected)} world map"><path fill="#25303c" stroke="#465768" stroke-width=".45" fill-rule="evenodd" d="${countries}"></path>${markers}${samples}</svg>`;
+    const lines = boundaries?.coordinates.map(line => 'M' + line.map(point => projectWorld(point).join(',')).join('L')).join('') ?? '';
+    let box = '0 75 1024 845';
+    if (fallbackCenter) {
+      const size = 1024 / 2 ** (fallbackCenter.zoom - 2);
+      const [x, y] = projectWorld(fallbackCenter.coords).map(Number);
+      const clamp = value => Math.max(0, Math.min(1024 - size, value - size / 2));
+      box = `${clamp(x)} ${clamp(y)} ${size} ${size}`;
+    }
+    panel.innerHTML = `<svg viewBox="${box}" aria-label="${escape(selected)} world map"><image class="${basemap}" href="${asset('blue-marble.webp')}" width="1024" height="1024"/><path d="${lines}" fill="none" stroke="#ffc086" stroke-width="1.1" opacity=".84" vector-effect="non-scaling-stroke"/>${markers}${samples}</svg>`;
     if ((selected === 'Floods' && floodTiles) || imageryKey) {
-      byId('map-note').textContent = 'Satellite tiles require WebGL. Dated case images remain available.';
+      byId('map-note').textContent = 'Satellite overlays require WebGL. Dated case images remain available.';
     }
   } catch {
-    if (version === fallbackVersion) panel.textContent='The observation catalog could not load.';
+    if (version === fallbackVersion) panel.textContent = 'The observation catalog could not load.';
   }
 }
 byId('map-fallback').addEventListener('click',event=>{
@@ -387,18 +465,22 @@ async function updateMap() {
   world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
-  for (const id of ['scene','contours','regional-context','satellite-context']) {
+  for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
   if (!current) {
     if (focusedCase !== 'world') {
       focusedCase = 'world';
-      const width = map.getContainer().clientWidth;
-      map.jumpTo({center:[0,16],zoom:Math.max(-.1,Math.min(2,Math.log2(width/525)))});
+      resetView();
+    }
+    if (hazard === 'Earthquakes' && plates) {
+      plateData().then(data => { if (version === updateVersion) addPlates(map, data); }).catch(() => {
+        if (version === updateVersion) byId('map-note').textContent = 'Plate boundaries could not load.';
+      });
     }
     drawImagery(map, imagery[imageryKey], imageryDate);
-    world.draw(map,hazard,minMagnitude,floodDate,observations.filter(entry=>entry.hazard===hazard),floodTiles)
+    world.draw(map,hazard,minMagnitude,floodDate,observations.filter(entry=>entry.hazard===hazard),floodTiles,days)
       .catch(() => { if (version === updateVersion) byId('map-note').textContent='The observation catalog could not load.'; });
     return;
   }
@@ -464,6 +546,7 @@ async function updateMap() {
 function showPoint(coords,title,copy) {
   byId('point-title').textContent=title;
   byId('point-copy').textContent=copy;
+  if (!mapReady) return;
   popup?.remove();
   popup=new maplibregl.Popup({offset:8,maxWidth:'240px'}).setLngLat(coords)
     .setHTML(`<strong>${escape(title)}</strong><p>${escape(copy)}</p>`).addTo(map);
@@ -480,19 +563,7 @@ function showWorldPoint(coords, item) {
   const detail = document.createElement('p');
   detail.textContent = item.description;
   content.append(name, detail);
-  if (item.balances?.length) {
-    const history = document.createElement('details');
-    const summary = document.createElement('summary');
-    summary.textContent = 'Annual history · m w.e.';
-    const list = document.createElement('ul');
-    for (const [year, value] of [...item.balances].reverse()) {
-      const row = document.createElement('li');
-      row.textContent = `${year} · ${value > 0 ? '+' : ''}${value.toFixed(2)}`;
-      list.append(row);
-    }
-    history.append(summary,list);
-    content.append(history);
-  }
+  if (item.balances?.length) content.append(massBalanceChart(item.balances));
   for (const [label, url] of item.links) {
     const link = document.createElement('a');
     link.textContent = label;
@@ -553,15 +624,15 @@ async function inspectPoint(event) {
 }
 
 const refreshCatalog = mountCatalog({
-  byId, view: () => ({ hazard, minMagnitude }), world, normalize,
+  byId, view: () => ({ hazard, minMagnitude, days, caseId: current?.id }), world, normalize,
   openCase: selectCase, openEntry, cases: observations,
 });
 mountAssistant({
-  byId, view: () => ({ hazard, current }),
+  byId, view: () => ({ hazard, current, days }),
   tools: {
-    load: world.load, find: (kind, query) => world.find(kind, query, normalize),
+    load: world.load, find: (kind, query) => world.find(kind, query, normalize, days),
     details: world.details, openCase: selectCase, openMode, openEntry,
-    info: kind => world.info(kind, minMagnitude, floodDate),
+    info: kind => world.info(kind, minMagnitude, floodDate, days),
     openImagery(kind, key) {
       selectWorld(kind);
       setImagery(key);
@@ -577,29 +648,16 @@ mountAssistant({
     },
   },
 });
-const drawers = [
-  { toggle: byId('browse-toggle'), panel: byId('browse-panel'), input: byId('browse-filter') },
-  { toggle: byId('ask-toggle'), panel: byId('ask-panel'), input: byId('ask-query') },
-];
-for (const drawer of drawers) {
-  const show = (open) => {
-    for (const other of drawers) {
-      other.panel.hidden = other !== drawer || !open;
-      other.toggle.setAttribute('aria-expanded', String(!other.panel.hidden));
-    }
-    if (open) {
-      drawer.input.focus();
-      refreshCatalog();
-    } else {
-      drawer.toggle.focus();
-    }
-  };
-  drawer.toggle.addEventListener('click', () => show(drawer.panel.hidden));
-  drawer.panel.querySelector('[data-dismiss]').addEventListener('click', () => show(false));
-  drawer.panel.addEventListener('keydown', event => {
-    if (event.key === 'Escape') show(false);
-  });
+const askToggle = byId('ask-toggle');
+const askPanel = byId('ask-panel');
+function toggleChat(open) {
+  askPanel.hidden = !open;
+  askToggle.setAttribute('aria-expanded', String(open));
+  (open ? byId('ask-query') : askToggle).focus();
 }
+askToggle.addEventListener('click', () => toggleChat(askPanel.hidden));
+askPanel.querySelector('[data-dismiss]').addEventListener('click', () => toggleChat(false));
+askPanel.addEventListener('keydown', event => { if (event.key === 'Escape') toggleChat(false); });
 
 render();
 startMap();

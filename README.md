@@ -33,11 +33,11 @@ The map presents dated observations. Forecast models and raw Earthdata processin
 
 ## Worldwide map
 
-The three hazard tabs open worldwide catalogs. The default earthquake view shows magnitude 4.0+ and offers magnitude filters. Flood reports come from GDACS, with a separate dated NASA LANCE VIIRS satellite layer (visible after zooming in). Glacier points show the latest available annual mass balance and up to 12 recorded years from WGMS. These are monitored sites, and dates vary by site. Outlined markers open the detailed satellite cases.
+The three hazard tabs open worldwide catalogs. The default earthquake view shows magnitude 4.0+ in the seven days before the downloaded USGS snapshot. Switch to 1, 7, or 30 days, change the magnitude threshold, or toggle plate boundaries. Flood reports come from GDACS, with a separate dated NASA LANCE VIIRS satellite layer (visible after zooming in). Glacier points show the latest available annual mass balance and up to 12 recorded years from WGMS. These are monitored sites, and dates vary by site. Outlined markers open the detailed satellite cases.
 
 Refresh the compact provider snapshots with `python scripts/prepare_world.py /path/to/DOI-WGMS-FoG-2026-02-10.zip`. The WGMS source is [Fluctuations of Glaciers Database, release 2026-02-10](https://doi.org/10.5904/wgms-fog-2026-02-10).
 
-**Observations** lists the records in the selected hazard and lets readers filter them by place. **Ask TerraPulse** uses this same catalog and fixed map actions. Try “Compare Guelma”, “Earthquakes in Japan”, “Show M5+ earthquakes”, “Show rainfall” or “Open Pine Island”. The assistant runs in the browser and uses provider records and methods directly.
+The sidebar lists observations in the selected hazard and lets readers filter them by place. **Ask TerraPulse** uses this same catalog and fixed map actions. Try “Compare Guelma”, “Earthquakes in Japan”, “Show M5+ earthquakes”, “Show rainfall” or “Open Pine Island”. The assistant runs in the browser and uses provider records and methods directly.
 
 See [Data and models](docs/data-and-models.md) for collection IDs and units, the Guelma Earth Engine export workflow, and an evaluation plan for each hazard.
 
@@ -46,3 +46,7 @@ See [Data and models](docs/data-and-models.md) for collection IDs and units, the
 Guelma and Lake Réghaïa are searchable under Floods. Pine Island is under Glaciers. The date controls show georeferenced radar imagery and Compare swipes two NASA GIBS browse crops. Sources links the evaluated CMR records and local event or wetland references.
 
 Recreate the imagery with `python scripts/prepare_radar_browse.py` after installing `scripts/requirements.txt`. This uses the [NASA GIBS NISAR Worldview layer](https://nisar-docs.asf.alaska.edu/worldview/). It is a daily visualization service that may mosaic acquisitions. The CMR records describe coverage and intended matching observation geometry, while the WebP images show what the service rendered for each date and crop. Numeric backscatter values require the calibrated GCOV arrays. We use NASA Worldview as a reference for dated comparison, and the [ASF NISAR Cookbook](https://github.com/ASFOpenSARlab/NISAR_Cookbook) as a reference for numeric extraction.
+
+## Base map
+
+NASA GIBS Blue Marble Shaded Relief and Bathymetry is the default basemap. The bundled Web Mercator overview mosaics the sixteen level-2 tiles, so the world opens without waiting on the satellite tile service. At regional zooms, the map requests finer NASA tiles. The browser fallback renders the same overview and observation locations. The optional [PB2002](https://github.com/fraxen/tectonicplates) plate boundaries by Peter Bird and Hugo Ahlenius / Nordpil are redistributed under [ODC-BY 1.0](https://opendatacommons.org/licenses/by/1-0/), with rounded coordinates and line segments split at the antimeridian.
