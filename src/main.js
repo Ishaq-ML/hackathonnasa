@@ -27,7 +27,7 @@ let updateVersion = 0;
 let focusedCase;
 
 const background = { version:8, sources:{}, layers:[{id:'water',type:'background',paint:{'background-color':'#101924'}}] };
-const attribution = 'NASA Earthdata GIBS · NASA JPL/ARIA · USGS · Natural Earth';
+const attribution = 'NASA GIBS / Blue Marble · NASA JPL/ARIA · USGS · Natural Earth';
 const search = byId('search');
 const searchResults = byId('search-results');
 
@@ -160,8 +160,7 @@ async function startMap() {
     map.addSource('land', {type:'geojson',data:feature(topology,topology.objects.countries)});
     map.addLayer({id:'land',type:'fill',source:'land',paint:{'fill-color':'#242e38'}});
     map.addLayer({id:'borders',type:'line',source:'land',paint:{'line-color':'#4d5864','line-width':.7}});
-    map.addSource('basemap', {type:'raster',tiles:['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],tileSize:256,maxzoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attribution/">CARTO</a>'});
-    map.addLayer({id:'basemap',type:'raster',source:'basemap',paint:{'raster-opacity':.76}});
+
   } catch (error) {
     console.error(error);
   }
@@ -173,7 +172,7 @@ async function updateMap() {
   popup?.remove();
   markers.forEach(marker => marker.remove());
   markers = [];
-  for (const id of ['scene','contours']) {
+  for (const id of ['scene','contours','regional-context']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
@@ -183,10 +182,18 @@ async function updateMap() {
     map.fitBounds(current.bounds,{padding:{top:70,right:24,bottom:100,left:24},duration:0,maxZoom:11});
   }
   if (mode === 'compare') return;
+  const contexts = {
+    Earthquakes: ['ve', [-70, 8.1, -65, 12.65]],
+    Floods: ['mo', [31.75, -26.2, 34.95, -23.6]],
+    Glaciers: ['pi', [-107, -76.35, -95, -73.6]],
+  };
+  const [context, [cw, cs, ce, cn]] = contexts[current.hazard];
+  map.addSource('regional-context',{type:'image',url:asset(`context-${context}.webp`),coordinates:[[cw,cn],[ce,cn],[ce,cs],[cw,cs]]});
+  map.addLayer({id:'regional-context',source:'regional-context',type:'raster',paint:{'raster-fade-duration':0, 'raster-opacity':.92}});
   const selected = current.modes.find(item => item.id === mode);
   if (selected?.image) {
     map.addSource('scene',{type:'image',url:asset(selected.image),coordinates:[[w,n],[e,n],[e,s],[w,s]]});
-    map.addLayer({id:'scene',source:'scene',type:'raster',paint:{'raster-fade-duration':0,'raster-resampling':['displacement','extent'].includes(mode)?'nearest':'linear'}});
+    map.addLayer({id:'scene',source:'scene',type:'raster',paint:{'raster-fade-duration':0,'raster-opacity':mode==='displacement'?.84:1,'raster-resampling':['displacement','extent'].includes(mode)?'nearest':'linear'}});
   }
   for (const [lng,lat,label] of current.markers) {
     const element=document.createElement('div');

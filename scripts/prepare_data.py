@@ -51,6 +51,32 @@ def save_image(source, target):
         image.convert("RGB").save(target, "WEBP", quality=88, method=6)
 
 
+BASEMAPS = {
+    "ve": (-70, 8.1, -65, 12.65),
+    "mo": (31.75, -26.2, 34.95, -23.6),
+    "pi": (-107, -76.35, -95, -73.6),
+}
+
+
+def make_basemaps(cache):
+    for key, bounds in BASEMAPS.items():
+        bbox = transform_bounds("EPSG:4326", "EPSG:3857", *bounds)
+        params = dict(SERVICE="WMS", REQUEST="GetMap", VERSION="1.1.1",
+                      LAYERS="BlueMarble_ShadedRelief_Bathymetry", STYLES="",
+                      FORMAT="image/jpeg", SRS="EPSG:3857",
+                      BBOX=",".join(map(str, bbox)), WIDTH=1200, HEIGHT=850)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = cache / f"base-{key}" if cache else pathlib.Path(tmp) / "base.jpg"
+            if not cache:
+                download(GIBS + "?" + urlencode(params), source)
+            with Image.open(source) as image:
+                values = np.asarray(image.convert("RGB"), dtype=np.float32)
+                gray = values @ np.array([.21, .72, .07])
+                toned = np.stack([gray * .37 + 7, gray * .42 + 9, gray * .47 + 14], axis=2)
+                Image.fromarray(toned.astype("uint8")).save(DATA / f"context-{key}.webp",
+                                                             "WEBP", quality=87, method=6)
+
+
 def make_displacement(source):
     width, height = 640, 272
     bounds = transform_bounds("EPSG:4326", "EPSG:3857", *QUAKE_BOUNDS)
@@ -158,6 +184,7 @@ def main(cache=None):
         make_displacement(raster)
     quake_data(cache)
     make_flood_extent(cache)
+    make_basemaps(cache)
 
 
 if __name__ == "__main__":

@@ -63,6 +63,9 @@ input::placeholder { color: var(--muted); }
 .maplibregl-ctrl-group button { background-color:#e5e9ed; }
 .maplibregl-ctrl-bottom-right { z-index:1; }
 .maplibregl-ctrl-attrib-inner { font-size:10px; }
+.maplibregl-ctrl-attrib.maplibregl-compact { max-width: min(390px, 75vw); }
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner { display:none; }
+.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show .maplibregl-ctrl-attrib-inner { display:block; }
 .maplibregl-popup-content { color:#e6ebf1; background:var(--panel); border:1px solid var(--line); font:12px system-ui,sans-serif; padding:10px 25px 10px 10px; }
 .maplibregl-popup-content p { color:var(--muted); margin-top:4px; }
 .maplibregl-popup-tip { display:none; }
