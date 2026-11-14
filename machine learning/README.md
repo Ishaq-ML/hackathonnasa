@@ -89,3 +89,15 @@ tile at N28/E085 covers the pilot and supports a small remote crop. [UNOSAT prod
 4260](https://unosat.org/products/4260) · [Detachment geometry in the reconstruction
 archive](https://github.com/hyoseokp/langtang-2026-cascade/blob/b5efb873006a3714b95cbb9c0b784c404df01f3f/data/source/unosat_4260/detachment_zone_utm45n.geojson) ·
 [Copernicus DEM download layout](https://copernicus-dem-90m.s3.amazonaws.com/readme.html)
+
+### Optical benchmark
+
+The reproducible Landslide4Sense run trains on a fixed 120-chip subset, selects
+a model on 48 validation chips, and evaluates once on 80 held-out test chips
+from the published splits. It reads Sentinel-2 and ALOS-derived terrain bands
+and writes a checkpoint for that schema. It can run while Earthdata access is
+pending. [Dataset and labels](https://huggingface.co/datasets/ibm-nasa-geospatial/Landslide4sense)
+
+```bash
+"$python" l4s_benchmark.py "$HOME/castor-audit/l4s-reproduction"
+```

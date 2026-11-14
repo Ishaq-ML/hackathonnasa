@@ -93,6 +93,15 @@ class PipelineTest(unittest.TestCase):
                 self.assertEqual(src.descriptions, ("candidate_score", "candidate_mask"))
                 self.assertTrue((src.read(2, masked=True).compressed() == 1).all())
 
+    def test_provider_header_normalizes_utc_without_zone_suffix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "provider.h5"
+            self.make_pair(path, "2026-08-19T23:39:18.567105263", "2026-08-31T23:39:18.442763158", .4)
+            with h5py.File(path, "r") as source:
+                info = header(source, "HH")
+            self.assertEqual(info["reference"], "2026-08-19T23:39:18.567105+00:00")
+            self.assertEqual(info["secondary"], "2026-08-31T23:39:18.442763+00:00")
+
     def test_component_boundaries_and_invalid_centers(self):
         data = np.ones((5, 5))
         labels = np.ones((5, 5))
