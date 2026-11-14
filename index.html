@@ -26,6 +26,32 @@
       <div id="map-note" class="map-note" aria-live="polite"></div>
       <div id="legend" class="legend"></div>
     </div>
+    <div class="map-actions">
+      <button class="quiet" id="browse-toggle" type="button" aria-expanded="false" aria-controls="browse-panel">Observations</button>
+      <button class="quiet" id="ask-toggle" type="button" aria-expanded="false" aria-controls="ask-panel">Ask TerraPulse</button>
+    </div>
+    <section id="browse-panel" class="map-drawer" aria-label="Observation list" hidden>
+      <header><h2>Observations</h2><button class="quiet" type="button" data-dismiss aria-label="Close observations">×</button></header>
+      <label class="sr-only" for="browse-filter">Filter observations by place</label>
+      <input id="browse-filter" type="search" placeholder="Filter by place">
+      <p id="browse-count" class="drawer-note" aria-live="polite"></p>
+      <ul id="browse-results" class="observation-list"></ul>
+      <nav id="browse-pages" aria-label="Observation pages"></nav>
+    </section>
+    <section id="ask-panel" class="map-drawer" aria-label="Ask TerraPulse" hidden>
+      <header><h2>Ask TerraPulse</h2><button class="quiet" type="button" data-dismiss aria-label="Close chat">×</button></header>
+      <div id="ask-log" class="ask-log" role="log" aria-label="Conversation" aria-live="polite"></div>
+      <div class="ask-prompts">
+        <button class="quiet" type="button">Compare Guelma</button>
+        <button class="quiet" type="button">Show M5+ earthquakes</button>
+        <button class="quiet" type="button">Open Pine Island</button>
+      </div>
+      <form id="ask-form">
+        <label class="sr-only" for="ask-query">Ask about the map</label>
+        <input id="ask-query" placeholder="Ask about a place or layer" autocomplete="off" maxlength="240" required>
+        <button class="quiet" type="submit">Send</button>
+      </form>
+    </section>
     <div id="record" class="record"></div>
     <div id="evidence" class="evidence"></div>
   </main>

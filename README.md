@@ -12,7 +12,7 @@ npm run dev
 npm run build
 ```
 
-The web build is static. It includes its imagery, vectors and observation data for repeatable demos without upstream requests.
+The web build is static. Detailed cases include their imagery, vectors and observation data. Optional worldwide satellite layers request tiles from NASA GIBS.
 
 ## Published observations
 
@@ -36,6 +36,10 @@ The map presents dated observations. Forecast models and raw Earthdata processin
 The three hazard tabs open worldwide catalogs. The default earthquake view shows magnitude 4.0+ and offers magnitude filters. Flood reports come from GDACS, with a separate dated NASA LANCE VIIRS satellite layer (visible after zooming in). Glacier points show the latest available annual mass balance and up to 12 recorded years from WGMS. These are monitored sites, and dates vary by site. Outlined markers open the detailed satellite cases.
 
 Refresh the compact provider snapshots with `python scripts/prepare_world.py /path/to/DOI-WGMS-FoG-2026-02-10.zip`. The WGMS source is [Fluctuations of Glaciers Database, release 2026-02-10](https://doi.org/10.5904/wgms-fog-2026-02-10).
+
+**Observations** lists the records in the selected hazard and lets readers filter them by place. **Ask TerraPulse** uses this same catalog and fixed map actions. Try “Compare Guelma”, “Earthquakes in Japan”, “Show M5+ earthquakes”, “Show rainfall” or “Open Pine Island”. The assistant runs in the browser and uses provider records and methods directly.
+
+See [Data and models](docs/data-and-models.md) for collection IDs and units, the Guelma Earth Engine export workflow, and an evaluation plan for each hazard.
 
 ## NISAR radar comparisons
 

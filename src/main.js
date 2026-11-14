@@ -5,13 +5,15 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 import { observations } from './cases.js';
 import { worldExplorer, globalFloodDate } from './world.js';
+import { mountAssistant, normalize } from './assistant.js';
+import { mountCatalog } from './catalog.js';
+import { drawImagery, imagery } from './imagery.js';
 
 maplibregl.setWorkerUrl(workerUrl);
 
 const asset = file => new URL(`${import.meta.env.BASE_URL}data/${file}`, location.origin).href;
 const byId = id => document.getElementById(id);
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const normalize = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const getQuery = () => new URLSearchParams(location.search);
 const hazards = ['Earthquakes','Floods','Glaciers'];
 const selectedFromUrl = () => observations.find(item => item.id === getQuery().get('case')) ?? null;
@@ -23,6 +25,8 @@ let mode = current ? modeFromUrl(current) : null;
 let minMagnitude = 4;
 let floodDate = globalFloodDate;
 let floodTiles = false;
+let imageryKey;
+let imageryDate;
 let map;
 let popup;
 let markers = [];
@@ -34,6 +38,7 @@ let quakePromise;
 const grids = new Map();
 let updateVersion = 0;
 let focusedCase;
+let fallbackSelection;
 
 const background = { version:8, sources:{}, layers:[{id:'water',type:'background',paint:{'background-color':'#101924'}}] };
 const attribution = 'NASA GIBS / Blue Marble · NASA JPL/ARIA · USGS · Natural Earth';
@@ -49,8 +54,10 @@ const world = worldExplorer({
 function selectWorld(nextHazard) {
   if (hazard === nextHazard && !current) return;
   hazard = nextHazard;
+  imageryKey = null;
   current = null;
   mode = null;
+  fallbackSelection = null;
   search.value = '';
   renderSearch();
   setUrl(false);
@@ -66,6 +73,7 @@ function selectCase(id) {
   const found = observations.find(item => item.id === id);
   if (!found || found === current) return;
   current = found;
+  fallbackSelection = null;
   hazard = current.hazard;
   mode = current.modes[0].id;
   setUrl(false);
@@ -94,14 +102,7 @@ searchResults.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button) return;
   if (button.dataset.id) selectCase(button.dataset.id);
-  if (button.dataset.entry && mapReady) {
-    const id = button.dataset.entry;
-    if (current) selectWorld(hazard);
-    world.open(hazard,id,map).catch(() => {});
-  } else if (button.dataset.entry && mapUnavailable) {
-    const item = world.visibleItems(hazard,0).find(row=>row.id===button.dataset.entry);
-    if (item) showFallbackDetail(world.details(hazard,item));
-  }
+  if (button.dataset.entry) openEntry(hazard, button.dataset.entry).catch(() => {});
   search.value = '';
   renderSearch();
   byId('case-heading')?.focus({preventScroll:true});
@@ -116,6 +117,8 @@ window.addEventListener('popstate', () => {
   current = selectedFromUrl();
   hazard = current?.hazard ?? hazardFromUrl();
   mode = current ? modeFromUrl(current) : null;
+  imageryKey = null;
+  fallbackSelection = null;
   render();
 });
 function renderTabs() {
@@ -126,9 +129,12 @@ function renderTabs() {
 byId('map-controls').addEventListener('change', event => {
   if (event.target.id === 'magnitude') minMagnitude = Number(event.target.value);
   else if (event.target.id === 'flood-date' && event.target.value) floodDate = event.target.value;
+  else if (event.target.id === 'imagery-date' && event.target.value) imageryDate = event.target.value;
   else return;
   if (!current) {
+    fallbackSelection = null;
     renderWorldCard();
+    refreshCatalog();
     if (mapReady) updateMap();
     if (mapUnavailable) drawFallback();
   }
@@ -141,6 +147,7 @@ byId('map-controls').addEventListener('click', event => {
   }
   if (event.target.closest('[data-flood-tiles]')) {
     floodTiles = !floodTiles;
+    if (floodTiles) imageryKey = null;
     render();
     if (floodTiles && mapReady && map.getZoom() < 5) {
       byId('point-copy').textContent = 'Zoom in to see the VIIRS flood composite.';
@@ -148,20 +155,40 @@ byId('map-controls').addEventListener('click', event => {
     byId('map-controls').querySelector('[data-flood-tiles]')?.focus();
     return;
   }
+  const imageryButton = event.target.closest('[data-imagery]');
+  if (imageryButton) {
+    const key = imageryButton.dataset.imagery;
+    setImagery(imageryKey === key ? null : key);
+    byId('map-controls').querySelector(`[data-imagery="${key}"]`)?.focus();
+    return;
+  }
   const localCase = event.target.closest('[data-open-case]');
   if (localCase) { selectCase(localCase.dataset.openCase); return; }
   const button = event.target.closest('[data-mode]');
-  if (!button || button.dataset.mode === mode) return;
-  mode = button.dataset.mode;
-  setUrl(true);
-  render();
+  if (!button) return;
+  openMode(button.dataset.mode);
   byId('map-controls').querySelector(`[data-mode="${mode}"]`)?.focus();
 });
+function openMode(nextMode) {
+  if (nextMode === mode || !current?.modes.some(item => item.id === nextMode)) return;
+  mode = nextMode;
+  setUrl(true);
+  render();
+}
+
+function setImagery(key) {
+  imageryKey = key;
+  imageryDate = imagery[key]?.latest;
+  if (key) floodTiles = false;
+  render();
+}
 byId('evidence').addEventListener('click', event => {
   if (!event.target.closest('[data-sources]')) return;
   const source = current ?? {...world.info(hazard,minMagnitude,floodDate),place:hazard};
-  byId('reference-content').innerHTML = `<div class="label">Data and methods</div><h2>${source.place}</h2><p>${source.method}</p><ul>${
-    source.sources.map(([label, url]) => `<li><a class="text-link" href="${url}" target="_blank" rel="noopener">${label}</a></li>`).join('')
+  const layer = !current && imagery[imageryKey];
+  const sources = layer ? [...source.sources, layer.source] : source.sources;
+  byId('reference-content').innerHTML = `<h2>${source.place}</h2><p>${source.method}</p>${layer ? `<p class="imagery-note">${layer.title} · ${imageryDate}. ${layer.description}</p>` : ''}<ul>${
+    sources.map(([label, url]) => `<li><a class="text-link" href="${url}" target="_blank" rel="noopener">${label}</a></li>`).join('')
   }</ul>`;
   byId('reference').showModal();
 });
@@ -181,15 +208,20 @@ function setUrl(replace) {
 
 function render() {
   renderTabs();
+  refreshCatalog();
   if (!current) {
     renderWorldCard();
     const options = [2.5,4,5,6].map(value => `<option value="${value}"${value===minMagnitude?' selected':''}>M${value.toFixed(1)}+</option>`).join('');
     const controls = {
       Earthquakes:`<label class="control">Magnitude <select id="magnitude">${options}</select></label>`,
-      Floods:`<button type="button" data-open-case="guelma-nisar">Guelma comparison</button><button type="button" data-flood-tiles aria-pressed="${floodTiles}">Satellite layer</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
-      Glaciers:'',
+      Floods:`<button type="button" data-open-case="guelma-nisar">Guelma comparison</button><button type="button" data-flood-tiles aria-pressed="${floodTiles}">VIIRS floodwater</button>${floodTiles?`<label class="control">Date <input id="flood-date" type="date" min="2025-04-01" max="${globalFloodDate}" value="${floodDate}"></label>`:''}`,
+      Glaciers:'<button type="button" data-open-case="pine-island-glacier">Pine Island comparison</button>',
     };
-    byId('map-controls').innerHTML = controls[hazard];
+    const imageryControls = ['radar', ...({ Floods:['rain'], Glaciers:['snow'] }[hazard] ?? [])]
+      .map(key => `<button type="button" data-imagery="${key}" aria-pressed="${key === imageryKey}">${imagery[key].title}</button>`).join('');
+    const layer = imagery[imageryKey];
+    byId('map-controls').innerHTML = controls[hazard] + imageryControls + (layer
+      ? `<label class="control">Date <input id="imagery-date" type="date" min="${layer.first}" max="${layer.latest}" value="${imageryDate}"></label>` : '');
     const legends = {
       Earthquakes:'<div class="key-list"><span><i style="--key:#f0ae70;border-radius:50%"></i> Earthquake / cluster</span><span>◎ Detailed NISAR case</span></div>',
       Floods:'<div class="key-list"><span><i style="--key:#65c5fa;border-radius:50%"></i> GDACS flood report</span>'
@@ -198,7 +230,7 @@ function render() {
       Glaciers:'<div class="key-list"><span><i style="--key:#f39678"></i> Latest annual loss</span><span><i style="--key:#93bef5"></i> Latest zero or gain</span><span>◎ Detailed ice imagery</span></div>',
     };
     byId('legend').innerHTML = legends[hazard];
-    byId('map-note').textContent = '';
+    byId('map-note').textContent = imageryKey === 'radar' && !mapUnavailable ? 'Zoom in to see radar swaths.' : '';
     renderOverlay();
     if (mapReady) updateMap();
     if (mapUnavailable) drawFallback();
@@ -286,6 +318,24 @@ function showFallbackDetail(item) {
     link.href = url;
     description.append(link);
   }
+  if (item.balances?.length) {
+    const recent = document.createElement('span');
+    recent.className = 'balance-history';
+    recent.textContent = item.balances.slice(-5).map(([year, value]) => `${year}: ${value > 0 ? '+' : ''}${value.toFixed(2)}`).join(' · ') + ' m w.e.';
+    description.append(recent);
+  }
+}
+
+async function openEntry(entryHazard, id) {
+  if (current || entryHazard !== hazard) selectWorld(entryHazard);
+  if (mapReady) return world.open(entryHazard, id, map);
+  await world.load(entryHazard);
+  if (current || entryHazard !== hazard) return;
+  const item = world.visibleItems(entryHazard, 0).find(row => row.id === id);
+  if (item) {
+    fallbackSelection = world.details(entryHazard, item);
+    showFallbackDetail(fallbackSelection);
+  }
 }
 
 let worldOutline;
@@ -300,6 +350,7 @@ async function drawFallback() {
     const [land] = await Promise.all([worldOutline,world.load(selected)]);
     if (version !== fallbackVersion || current) return;
     renderWorldCard();
+    if (fallbackSelection) showFallbackDetail(fallbackSelection);
     renderSearch();
     const project = ([lon,lat]) => [((lon+180)*2).toFixed(1), ((88-lat)*2).toFixed(1)];
     const path = rings => rings.map(ring=>ring.map((p,i)=>(i?'L':'M')+project(p).join(',')).join('')+'Z').join('');
@@ -318,15 +369,16 @@ async function drawFallback() {
       return `<circle data-case="${item.id}" cx="${x}" cy="${y}" r="5" fill="#171c23" stroke="#fff" stroke-width="2"><title>${escape(item.place)} · detailed case</title></circle>`;
     }).join('');
     panel.innerHTML = `<svg viewBox="0 0 720 352" aria-label="${escape(selected)} world map"><path fill="#25303c" stroke="#465768" stroke-width=".45" fill-rule="evenodd" d="${countries}"></path>${markers}${samples}</svg>`;
-    if (selected==='Floods' && floodTiles) byId('map-note').textContent='The satellite tile layer requires WebGL.';
+    if ((selected === 'Floods' && floodTiles) || imageryKey) {
+      byId('map-note').textContent = 'Satellite tiles require WebGL. Dated case images remain available.';
+    }
   } catch {
     if (version === fallbackVersion) panel.textContent='The observation catalog could not load.';
   }
 }
 byId('map-fallback').addEventListener('click',event=>{
   if (event.target.dataset.case) selectCase(event.target.dataset.case);
-  const hit = world.visibleItems(hazard,minMagnitude).find(item=>item.id===event.target.dataset.entry);
-  if (hit) showFallbackDetail(world.details(hazard,hit));
+  if (event.target.dataset.entry) openEntry(hazard,event.target.dataset.entry).catch(() => {});
 });
 
 async function updateMap() {
@@ -335,7 +387,7 @@ async function updateMap() {
   world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
-  for (const id of ['scene','contours','regional-context']) {
+  for (const id of ['scene','contours','regional-context','satellite-context']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
@@ -345,6 +397,7 @@ async function updateMap() {
       const width = map.getContainer().clientWidth;
       map.jumpTo({center:[0,16],zoom:Math.max(-.1,Math.min(2,Math.log2(width/525)))});
     }
+    drawImagery(map, imagery[imageryKey], imageryDate);
     world.draw(map,hazard,minMagnitude,floodDate,observations.filter(entry=>entry.hazard===hazard),floodTiles)
       .catch(() => { if (version === updateVersion) byId('map-note').textContent='The observation catalog could not load.'; });
     return;
@@ -497,6 +550,55 @@ async function inspectPoint(event) {
   } catch {
     if (version === updateVersion) showPoint(coords,'Measurement unavailable',point);
   }
+}
+
+const refreshCatalog = mountCatalog({
+  byId, view: () => ({ hazard, minMagnitude }), world, normalize,
+  openCase: selectCase, openEntry, cases: observations,
+});
+mountAssistant({
+  byId, view: () => ({ hazard, current }),
+  tools: {
+    load: world.load, find: (kind, query) => world.find(kind, query, normalize),
+    details: world.details, openCase: selectCase, openMode, openEntry,
+    info: kind => world.info(kind, minMagnitude, floodDate),
+    openImagery(kind, key) {
+      selectWorld(kind);
+      setImagery(key);
+    },
+    openWorld(kind, magnitude, satellite) {
+      if (magnitude) minMagnitude = magnitude;
+      if (satellite) {
+        floodTiles = true;
+        imageryKey = null;
+      }
+      if (kind !== hazard || current) selectWorld(kind);
+      else render();
+    },
+  },
+});
+const drawers = [
+  { toggle: byId('browse-toggle'), panel: byId('browse-panel'), input: byId('browse-filter') },
+  { toggle: byId('ask-toggle'), panel: byId('ask-panel'), input: byId('ask-query') },
+];
+for (const drawer of drawers) {
+  const show = (open) => {
+    for (const other of drawers) {
+      other.panel.hidden = other !== drawer || !open;
+      other.toggle.setAttribute('aria-expanded', String(!other.panel.hidden));
+    }
+    if (open) {
+      drawer.input.focus();
+      refreshCatalog();
+    } else {
+      drawer.toggle.focus();
+    }
+  };
+  drawer.toggle.addEventListener('click', () => show(drawer.panel.hidden));
+  drawer.panel.querySelector('[data-dismiss]').addEventListener('click', () => show(false));
+  drawer.panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') show(false);
+  });
 }
 
 render();
