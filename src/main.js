@@ -5,6 +5,7 @@ import { observations } from './cases.js';
 import { worldExplorer, globalFloodDate } from './world.js';
 import { mountAssistant, normalize } from './assistant.js';
 import { mountCatalog } from './catalog.js';
+import { mountDiscovery } from './discovery.js';
 import { drawImagery, imagery } from './imagery.js';
 import { basemapStyle, addBasemap, setBasemap, addPlates, plateSource, projectWorld } from './basemap.js';
 
@@ -41,6 +42,13 @@ let quakePromise;
 const grids = new Map();
 let updateVersion = 0;
 let focusedCase;
+let choosingRadarPoint = false;
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || !choosingRadarPoint) return;
+  choosingRadarPoint = false;
+  map.getCanvas().style.cursor = "";
+  byId("map-note").textContent = "";
+});
 let fallbackSelection;
 
 const regions = {
@@ -310,6 +318,98 @@ byId('regions').addEventListener('click', event => {
   }
 });
 
+const openDiscovery = mountDiscovery({
+  selectMapPoint() {
+    if (!mapReady) return false;
+    choosingRadarPoint = true;
+    byId("map-note").textContent = "Click a location to search for NISAR observations.";
+    map.getCanvas().style.cursor = "crosshair";
+    return true;
+  },
+  showLandslides(coords, data) {
+    if (!mapReady) return false;
+    current = null;
+    mode = null;
+    focusedCase = "world";
+    imageryKey = null;
+    fallbackSelection = null;
+    setUrl(false);
+    map.jumpTo({center: coords, zoom: 9});
+    render();
+    const id = "coolr-outlines";
+    map.addSource(id, {type:"geojson", data, attribution:"NASA COOLR"});
+    map.addLayer({type:"line",id,source:id,paint:{"line-color":"#ffce78","line-width":2}});
+    byId("map-note").textContent = "Mapped landslide outlines · NASA COOLR";
+    return true;
+  },
+  showRadar(coords, date) {
+    if (!mapReady) return false;
+    current = null;
+    mode = null;
+    focusedCase = "world";
+    fallbackSelection = null;
+    imageryKey = "radar";
+    imageryDate = date;
+    setUrl(false);
+    map.jumpTo({center: coords, zoom: 9});
+    render();
+    return true;
+  },
+});
+byId("find-radar").onclick = () => {
+  const center = mapReady ? map.getCenter() : {lng:0,lat:14};
+  openDiscovery(center.lng, center.lat);
+};
+
+export function forecastMapCenter() {
+  return mapReady ? map.getCenter().wrap() : null;
+}
+
+export function showGlofOnMap(site, geometry, date) {
+  if (!mapReady) return false;
+  current = null;
+  mode = null;
+  hazard = 'Glaciers';
+  focusedCase = 'world';
+  imageryKey = null;
+  fallbackSelection = null;
+  setUrl(false);
+  render();
+  map.addSource('glof-observations', {type:'geojson', data:geometry});
+  map.addLayer({id:'glof-fill', source:'glof-observations', type:'fill',
+    paint:{'fill-color':['match',['get','layer'],'glacial_lake','#71e6d2','historical_lake_inventory','#efca78','#b3bdc6'], 'fill-opacity':.3}});
+  map.addLayer({id:'glof-outlines', source:'glof-observations', type:'line',
+    paint:{'line-color':['match',['get','layer'],'glacial_lake','#71e6d2','historical_lake_inventory','#efca78','#b3bdc6'],'line-width':2}});
+  const [w,s,e,n] = site.lake_bbox;
+  map.fitBounds([[w,s],[e,n]], {padding:55,maxZoom:12,duration:0});
+  byId('map-note').textContent = `${site.name} · experimental radar water ${date}. Historical outlines keep separate dates. Risk not assessed.`;
+  const hasInventory = geometry.features.some(f => f.properties.layer === 'historical_lake_inventory');
+  byId('legend').innerHTML = `<div class="key-list"><span><i style="--key:#71e6d2"></i>Modelled radar water</span>${hasInventory ? '<span><i style="--key:#efca78"></i>Indian NRSC lake inventory · 2016</span>' : ''}<span><i style="--key:#b3bdc6"></i>Historical glacier candidate · GLIMS</span></div>`;
+  return true;
+}
+
+export function showForecastOnMap({ bounds, preview_png }) {
+  if (!mapReady) return false;
+  current = null;
+  mode = null;
+  focusedCase = "world";
+  imageryKey = null;
+  fallbackSelection = null;
+  setUrl(false);
+  render();
+  const [west, south, east, north] = bounds;
+  const id = "lhasa-forecast";
+  map.addSource(id, {
+    type: "image", url: preview_png,
+    coordinates: [[west, north], [east, north], [east, south], [west, south]],
+  });
+  map.addLayer({ id, type: "raster", source: id, paint: { "raster-resampling": "nearest", "raster-fade-duration": 0 } });
+  map.fitBounds([[west, south], [east, north]], { padding: 45, maxZoom: 10, duration: 0 });
+  byId("map-note").textContent = "Next-day rainfall-triggered landslide hazard · NASA LHASA";
+  byId("legend").innerHTML = '<strong>LHASA hazard score</strong><div class="hazard-gradient"></div><div class="legend-values"><span>Lower</span><span>Higher</span></div>';
+  return true;
+}
+
 async function startMap() {
   try {
     maplibregl = await import('maplibre-gl');
@@ -322,7 +422,13 @@ async function startMap() {
     map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'top-right');
     map.addControl(new maplibregl.ScaleControl({unit:'metric'}), 'bottom-right');
     map.addControl(new maplibregl.AttributionControl({compact:true}), 'bottom-right');
-    map.on('click', inspectPoint);
+    map.on('click', event => {
+      if (!choosingRadarPoint) return inspectPoint(event);
+      choosingRadarPoint = false;
+      map.getCanvas().style.cursor = '';
+      byId('map-note').textContent = '';
+      openDiscovery(event.lngLat.wrap().lng, event.lngLat.lat);
+    });
     await new Promise(resolve => map.once('load', resolve));
   } catch {
     mapUnavailable = true;
@@ -465,7 +571,11 @@ async function updateMap() {
   world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
-  for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates']) {
+  for (const id of ['glof-outlines','glof-fill']) {
+    if (map.getLayer(id)) map.removeLayer(id);
+  }
+  if (map.getSource('glof-observations')) map.removeSource('glof-observations');
+  for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates','coolr-outlines','lhasa-forecast']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
