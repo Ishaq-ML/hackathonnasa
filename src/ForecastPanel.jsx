@@ -1,3 +1,4 @@
+import WorkflowReturn from './WorkflowReturn.jsx';
 import React, { useState } from 'react';
 
 const shades = ['#254871', '#307da8', '#66c8c0', '#f4ca60', '#ee803c', '#c63d41'];
@@ -46,6 +47,7 @@ export default function ForecastPanel() {
   }
 
   return <dialog id="forecast" aria-labelledby="forecast-title">
+    <WorkflowReturn stage="01 / Rainfall-triggered hazard" />
     <div className="discovery-heading">
       <div><h2 id="forecast-title">Landslide forecast</h2><p>Rainfall-triggered hazard · NASA LHASA 2.1</p></div>
       <form method="dialog"><button className="quiet" aria-label="Close forecast">×</button></form>
