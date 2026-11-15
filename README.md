@@ -12,11 +12,13 @@ npm run dev
 npm run build
 ```
 
-Run `python api/landslide.py` in a second terminal for local landslide inference. Vite proxies `/api` to port 8765. On Vercel the React/Vite frontend and Python function share a domain.
+Install the runtime dependency with `python -m pip install -r requirements.txt` and run `python api/landslide.py` in a second terminal. Vite proxies `/api` to port 8765. On Vercel the React/Vite frontend and Python function share a domain.
+
+Use **Landslide forecast** to request a 30-arcsecond tile from NASA LHASA’s rainfall-triggered **Hazard Tomorrow** feed. Enter coordinates or use the map center (60°S–60°N). The Python route `GET /api/forecast?lon=3.05&lat=36.70` returns a preview, source GeoTIFF link, and retrieval timestamp. The public GIS service exposes no forecast issuance or validity timestamps. NASA supplies the model and forecasts. TerraPulse retrieves and displays its output.
 
 Use **Find NISAR** to search anywhere by coordinates, map point or place name. Catalog matches show NISAR acquisitions. The dialog also retrieves dated NASA COOLR inventory features and opens an illustrative NISAR GCOV comparison of Rasuwa. Existing flood, earthquake and glacier cases display sourced observations.
 
-Use **Landslides → Run held-out example** to run a real Landslide4Sense test chip. The service also accepts compatible prepared tiles.
+Use **Detect scars → Run held-out example** to run a real Landslide4Sense test chip. The service also accepts compatible prepared tiles.
 
 - `GET /api/landslide` returns the model card, channel order and held-out metrics.
 - `GET /api/landslide?example=1` scores the example and returns its RGB preview and reference labels.

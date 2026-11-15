@@ -58,10 +58,10 @@ export default function LandslideLab() {
   return (
     <dialog id="landslide-lab" aria-labelledby="landslide-title">
       <div className="discovery-heading">
-        <div><h2 id="landslide-title">Landslide detection</h2><p>Sentinel-2 and ALOS terrain · Experimental</p></div>
+        <div><h2 id="landslide-title">Post-event landslide detection</h2><p>Sentinel-2 and ALOS terrain · Experimental</p></div>
         <form method="dialog"><button className="quiet" aria-label="Close landslide detection">×</button></form>
       </div>
-      <p>Run the model on a held-out satellite image or upload a compatible 14-band tile.</p>
+      <p>Run the model on a held-out image acquired after a landslide or upload a compatible 14-band tile.</p>
       <div className="lab-actions">
         <button className="quiet lab-primary" type="button" disabled={busy} onClick={() => run()}>Run held-out example</button>
         <button className="quiet" type="button" disabled={busy} onClick={() => upload.current.click()}>Upload JSON tile</button>

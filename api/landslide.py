@@ -133,4 +133,12 @@ class handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", 8765), handler).serve_forever()
+    from forecast import handler as forecast_handler
+
+    class local_handler(handler):
+        def do_GET(self):
+            if urlsplit(self.path).path == "/api/forecast":
+                return forecast_handler.do_GET(self)
+            return super().do_GET()
+
+    ThreadingHTTPServer(("127.0.0.1", 8765), local_handler).serve_forever()

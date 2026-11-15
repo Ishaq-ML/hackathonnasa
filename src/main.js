@@ -361,6 +361,31 @@ byId("find-radar").onclick = () => {
   openDiscovery(center.lng, center.lat);
 };
 
+export function forecastMapCenter() {
+  return mapReady ? map.getCenter().wrap() : null;
+}
+
+export function showForecastOnMap({ bounds, preview_png }) {
+  if (!mapReady) return false;
+  current = null;
+  mode = null;
+  focusedCase = "world";
+  imageryKey = null;
+  fallbackSelection = null;
+  setUrl(false);
+  render();
+  const [west, south, east, north] = bounds;
+  const id = "lhasa-forecast";
+  map.addSource(id, {
+    type: "image", url: preview_png, attribution: "NASA GSFC LHASA",
+    coordinates: [[west, north], [east, north], [east, south], [west, south]],
+  });
+  map.addLayer({ id, type: "raster", source: id, paint: { "raster-resampling": "nearest", "raster-fade-duration": 0 } });
+  map.fitBounds([[west, south], [east, north]], { padding: 45, maxZoom: 10, duration: 0 });
+  byId("map-note").textContent = "Next-day rainfall-triggered landslide hazard · NASA LHASA";
+  return true;
+}
+
 async function startMap() {
   try {
     maplibregl = await import('maplibre-gl');
@@ -522,7 +547,7 @@ async function updateMap() {
   world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
-  for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates','coolr-outlines']) {
+  for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates','coolr-outlines','lhasa-forecast']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
