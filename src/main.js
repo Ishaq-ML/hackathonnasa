@@ -377,7 +377,7 @@ export function showForecastOnMap({ bounds, preview_png }) {
   const [west, south, east, north] = bounds;
   const id = "lhasa-forecast";
   map.addSource(id, {
-    type: "image", url: preview_png, attribution: "NASA GSFC LHASA",
+    type: "image", url: preview_png,
     coordinates: [[west, north], [east, north], [east, south], [west, south]],
   });
   map.addLayer({ id, type: "raster", source: id, paint: { "raster-resampling": "nearest", "raster-fade-duration": 0 } });

@@ -62,7 +62,7 @@ def stage(issue, bounds, directory):
             target.update_tags(1, **tags)
             target.set_band_unit(1, "mm")
     manifest = {
-        "source": url, "index_entry": record, "issue_utc": issue.isoformat(),
+        "source": url, "index_entry": record, "initialized_at_utc": issue.isoformat(), "published_at_utc": None,
         "valid_from_utc": issue.isoformat(), "valid_to_utc": (issue + timedelta(hours=24)).isoformat(),
         "forecast_variable": "24-hour surface accumulated precipitation", "units": "mm",
         "bounds_requested": bounds, "rows": values.shape[0], "columns": values.shape[1],
