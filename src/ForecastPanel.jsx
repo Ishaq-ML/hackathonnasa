@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 
 const shades = ['#254871', '#307da8', '#66c8c0', '#f4ca60', '#ee803c', '#c63d41'];
 
-function probability(value) {
-  return value === null ? 'No data' : new Intl.NumberFormat('en', {style: 'percent', maximumSignificantDigits: 3}).format(value);
+function hazardScore(value) {
+  return value === null || !Number.isFinite(value) ? 'No data' : Number(value).toFixed(4);
 }
 
 export default function ForecastPanel() {
@@ -70,10 +70,10 @@ export default function ForecastPanel() {
       <div>
         <h3>NASA Hazard Tomorrow</h3>
         {result.valid_pixels ? <>
-          <p>Selected cell score <strong>{probability(result.point_value)}</strong><br />Regional peak score <strong>{probability(result.peak_value)}</strong></p>
-          <p>{result.valid_pixels.toLocaleString()} cells with data. Transparent cells have no data.</p>
+          <p>Selected cell hazard score <strong>{hazardScore(result.point_value)}</strong><br />Regional maximum score <strong>{hazardScore(result.peak_value)}</strong></p>
+          <p>{result.valid_pixels.toLocaleString()} cells with data. Transparent cells have no data. These scores are not locally calibrated landslide probabilities.</p>
         </> : <p>NASA returned no valid cells in this area.</p>}
-        <p>Retrieved <time dateTime={result.retrieved_at}>{new Date(result.retrieved_at).toISOString().slice(0, 16).replace('T', ' ')} UTC</time>. The feed does not expose the forecast issue time.</p>
+        <p>Retrieved <time dateTime={result.retrieved_at}>{new Date(result.retrieved_at).toISOString().slice(0, 16).replace('T', ' ')} UTC</time>. NASA does not expose the issue or validity time through this endpoint, so freshness for a specific day is unverified.</p>
         <div className="lab-actions">
           <button className="quiet" type="button" onClick={onMap} disabled={!result.valid_pixels}>Show on map</button>
           <a href={result.geotiff} target="_blank" rel="noreferrer">Source GeoTIFF</a>
