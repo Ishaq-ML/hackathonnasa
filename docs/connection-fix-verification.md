@@ -1,5 +1,9 @@
 # Active interface connection repairs
 
+The subsequent public-provider timeout repair is documented in
+[OSM availability](osm-availability.md), including real successful lookups and
+remaining worldwide-service limits.
+
 This patch follows integration commit `87a2d32` without changing model weights,
 scientific results or source data.
 

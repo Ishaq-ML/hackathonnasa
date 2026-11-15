@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/exposure.py": {
-      "maxDuration": 20
+      "includeFiles": "server_data/osm/**",
+      "maxDuration": 25
     },
     "api/glof.py": {
       "includeFiles": "server_data/glof/**",
