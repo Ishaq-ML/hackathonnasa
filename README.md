@@ -1,5 +1,36 @@
 # TerraPulse
 
+## Landslide scar screening and GPU follow-up
+
+**What is a scar?** It is land visibly disturbed *after* a landslide. The
+Sentinel-2 + terrain U-Net segments these post-event pixels; it is not a
+forecast of where a future landslide will happen.
+
+The **Detect scars** panel now shows the held-out satellite tile, independent
+reference mask, model prediction, and true-positive/false-positive/
+false-negative overlay at the same time. It reports metrics for that one tile
+separately from the fixed 80-chip test benchmark.
+
+The API's `screening.review_priority` is a **heuristic review queue**, *not*
+danger to people or a calibrated risk probability. Its low/medium/high tiers
+are assigned from connected candidate-pixel extent; no-candidate is not
+a safe-land declaration. Real consequence/severity classification requires
+independently assessed slope stability, event dynamics, runout, infrastructure
+and population exposure, and dedicated labels.
+
+The repo contains a reusable two-NVIDIA-L40 training script at
+`scripts/train_landslide_gpu_detached.sh`. It stages up to 2,200 pinned
+Landslide4Sense training chips (reusing any matching local chips), fits two
+independent spatial models and evaluates the fixed benchmark. It exports an
+ONNX candidate under `~/castor-audit/landslide-scar-gpu-v2/release/`, but
+**does not automatically replace the deployed model**. Promotion uses only
+validation AP, never test F1; the test set has already been inspected during
+prior iterations and is not a new independent generalization test.
+
+The October/November GCOV gallery is explicitly post-event radar monitoring,
+not a detector of the August 26 Rasuwa rock-ice avalanche. NISAR-GUNW
+preprocessing and reviewed terrain-failure labels are a separate research task.
+
 An observation atlas for the 2026 NASA Space Apps Challenge, [Dancing with the SARs](https://www.spaceappschallenge.org/2026/challenges/dancing-with-the-sars/).
 
 ## Run
