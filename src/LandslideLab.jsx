@@ -1,3 +1,4 @@
+import WorkflowReturn from './WorkflowReturn.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 
 const viewNames = {
@@ -94,6 +95,7 @@ export default function LandslideLab() {
     : result?.rgb ? ['satellite', 'predicted'] : ['predicted'];
 
   return <dialog id="landslide-lab" aria-labelledby="landslide-title">
+    <WorkflowReturn stage="02 / Post-event detection" />
     <div className="discovery-heading">
       <div>
         <h2 id="landslide-title">Landslide scar detection</h2>
@@ -104,6 +106,11 @@ export default function LandslideLab() {
     <p>A <strong>landslide scar</strong> is the disturbed/exposed ground left <strong>after</strong>
       material slides down a slope. This U-Net maps possible scars in prepared satellite imagery.
       It does not predict when a slope will collapse.</p>
+    <div className="scar-model-summary" aria-label="Published evaluation context">
+      <strong>66.2% F1</strong>
+      <span>Fixed held-out benchmark · 80 Landslide4Sense tiles</span>
+      <span className="scar-model-note">Not tested on every country or event</span>
+    </div>
     <div className="lab-actions">
       <button className="quiet lab-primary" type="button" disabled={busy} onClick={() => run()}>
         Compare held-out example
