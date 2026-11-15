@@ -215,3 +215,22 @@ dialog li { margin-bottom: 5px; }
   .scar-tile canvas { max-height: 320px; }
   #landslide-lab { padding: 14px; }
 }
+
+
+/* Small, evidence-first human-exposure panel; never imply a safety certification. */
+#exposure-panel { width: min(720px, calc(100vw - 24px)); max-height: calc(100svh - 24px); overflow-y: auto; background: var(--panel); color: inherit; }
+#exposure-panel h2 { font-size: 22px; letter-spacing: -.03em; }
+#exposure-panel p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+#exposure-panel a { color: var(--blue); text-decoration: underline; }
+.exposure-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 16px 0; }
+.exposure-form label { display: grid; gap: 5px; font-size: 12px; color: var(--muted); }
+.exposure-form input, .exposure-form select { width: 120px; max-width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--line); background: #121c1d; color: inherit; }
+.exposure-form .lab-primary { color: #132622; background: var(--blue); font-weight: 680; }
+.exposure-results { padding: 15px 0 8px; border-top: 1px solid var(--line); }
+.exposure-results h3 { font-size: 17px; margin-bottom: 9px; }
+.exposure-stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.exposure-stat-grid div { border: 1px solid var(--line); background: #162326; border-radius: 6px; padding: 12px; display: grid; gap: 5px; }
+.exposure-stat-grid strong { color: #f0faf4; font-size: 23px; font-variant-numeric: tabular-nums; }
+.exposure-stat-grid span { color: var(--muted); font-size: 11px; }
+#exposure-panel details { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; font-size: 12px; }
+@media (max-width: 510px) { .exposure-stat-grid { grid-template-columns: 1fr 1fr; gap: 6px; } .exposure-form label { flex: 1; } .exposure-form input, .exposure-form select { width: 100%; } }
