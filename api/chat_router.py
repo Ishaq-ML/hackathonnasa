@@ -71,10 +71,15 @@ def normalize(message: str) -> str:
 
 def parse(state: State) -> dict:
     msg = normalize(state["message"])
+    glof = bool(re.search(r"\b(glofs?|glacial lakes?|south lhonak|imja|tsho rolpa|palcacocha|suicide basin)\b", msg))
     actions: list[dict] = []
     reply = ""
     intent = "explain"
     negative = bool(re.search(r"\b(hide|disable|remove|turn off|clear)\b", msg))
+    if glof and re.search(r"\b(how accurate|accuracy)\b", msg):
+        return {"normalized":msg,"actions":[{"type":"open_tool","value":"glof"}],
+                "reply":"Opening GLOF evidence. Water-mapping accuracy and lake-specific reference checks are shown in expert mode; breach prediction accuracy has not been established. The optical scar benchmark is a different task.",
+                "intent":"glof"}
     # First, scientific explanations take precedence over commands.
     for phrase, text in QUESTIONS:
         if phrase in msg:
@@ -86,10 +91,14 @@ def parse(state: State) -> dict:
                     "intent": "safety"}
     if re.search(r"\b(help|what can you do|commands)\b", msg):
         return {"normalized": msg, "actions": [],
-                "reply": "I can open NASA LHASA forecasts, compare post-event scar detections, inspect buildings/roads around a location, display NISAR observations, toggle map layers, select a basemap, open legend/time controls, or zoom to Nepal, Algeria, Japan, Chile and other supported places.",
+                "reply": "I can open GLOF monitoring, NASA LHASA forecasts, compare post-event scar detections, inspect buildings/roads around a location, display NISAR observations, toggle map layers, select a basemap, open legend/time controls, or zoom to supported places.",
                 "intent": "help"}
 
-    if re.search(r"\b(scars?|segmentation|unet|u-net|after landslide|detect landslide)\b", msg):
+    if glof:
+        actions.append({"type":"open_tool", "value":"glof"})
+        reply="Opening historical GLOF monitoring. Lake-area changes, annual glacier motion and partial surface change are evidence for review, not a breach forecast."
+        intent="glof"
+    elif re.search(r"\b(scars?|segmentation|unet|u-net|after landslide|detect landslide)\b", msg):
         actions.append({"type":"open_tool", "value":"scar"})
         reply="Opening post-event scar detection. It maps disturbed land after a landslide, not how dangerous the terrain is."
         intent="scar"

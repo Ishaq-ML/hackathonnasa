@@ -90,7 +90,7 @@ function App() {
   <dialog id="reference" aria-label="Observation sources"><div id="reference-content"></div><form method="dialog"><button className="quiet" type="submit">Close</button></form></dialog>
   <LandslideLab />
   <ForecastPanel />
-  <GlofPanel />
+  <GlofPanel onShowOnMap={async (...args) => (await import('./main.js')).showGlofOnMap(...args)} />
   <RadarExample />
     </>
   );

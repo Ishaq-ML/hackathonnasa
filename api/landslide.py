@@ -165,16 +165,36 @@ class handler(BaseHTTPRequestHandler):
         self.send_json(answer)
 
 
-if __name__ == "__main__":
-    from forecast import handler as forecast_handler
-    from glof import handler as glof_handler
+def local_handler():
+    """Use the same endpoint handlers locally as Vercel's individual functions."""
+    try:
+        from . import forecast, glof, exposure, chat
+    except ImportError:  # python api/landslide.py
+        import forecast, glof, exposure, chat
 
     class LocalHandler(handler):
-        def do_GET(self):
-            if urlsplit(self.path).path.rstrip('/') == "/api/glof":
-                return glof_handler.do_GET(self)
-            if urlsplit(self.path).path == "/api/forecast":
-                return forecast_handler.do_GET(self)
-            return super().do_GET()
+        # Chat uses its own JSON responder; other handlers share send_json.
+        respond = chat.handler.respond
 
+        def do_GET(self):
+            route = urlsplit(self.path).path.rstrip('/')
+            endpoint = {'/api/landslide':handler, '/api/forecast':forecast.handler,
+                        '/api/glof':glof.handler, '/api/exposure':exposure.handler,
+                        '/api/chat':chat.handler}.get(route)
+            if endpoint is None:
+                return self.send_json({'error':'Unknown endpoint'}, 404)
+            return endpoint.do_GET(self)
+
+        def do_POST(self):
+            route = urlsplit(self.path).path.rstrip('/')
+            endpoint = {'/api/landslide':handler, '/api/chat':chat.handler}.get(route)
+            if endpoint is None:
+                return self.send_json({'error':'Unknown endpoint'}, 404)
+            return endpoint.do_POST(self)
+
+    return LocalHandler
+
+
+if __name__ == "__main__":
+    LocalHandler = local_handler()
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get('TERRAPULSE_API_PORT', '8765'))), LocalHandler).serve_forever()

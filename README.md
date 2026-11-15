@@ -2,7 +2,8 @@
 
 ## Glacial-lake monitoring
 
-Use **Monitor GLOFs** in the map toolbar, or open `/?glof=south_lhonak`.
+Open **Dataset → Glaciers & ice → Monitor GLOFs · Five real lakes**, or visit
+`/?glof=south_lhonak`. The active Leaflet page mounts the observatory on demand.
 The normal/expert panel combines 253 historical radar observations across
 five lakes, annual glacier movement where available, and partial repeat-terrain
 change at South Lhonak. Its Equal Earth study map links to dated lake/glacier
@@ -14,6 +15,11 @@ The release includes actual model weights, a real CPU-inference example and a
 Python `/api/glof` function compatible with the existing local/Vercel setup.
 See [GLOF monitoring](docs/glof-monitoring.md) for results, API endpoints and
 [scientific processing](machine%20learning/glof/README.md) for reproducibility.
+
+The documented local Python server also routes `/api/chat` (GET and POST),
+`/api/exposure`, `/api/forecast` and `/api/landslide`. Chat can open GLOF
+monitoring. Exposure queries use a bounded, user-triggered Overpass lookup;
+provider timeouts remain unavailable results, never zero-exposure conclusions.
 
 ## Landslide scar screening and GPU follow-up
 

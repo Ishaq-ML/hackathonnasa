@@ -9,6 +9,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c =>
 const pct = x => Number.isFinite(x) ? (x * 100).toFixed(1) + '%' : 'N/A';
 const score = x => typeof x === 'number' && Number.isFinite(x) ? x.toFixed(4) : 'No data';
 let activeLayer = null;
+let activeLegend = null;
 let lastExposure = null;
 let lastScar = null;
 let lastFocus = document.activeElement;
@@ -99,6 +100,10 @@ function attachCoords(action) {
   };
 }
 function clearAnalysisLayer() {
+  if (activeLegend) {
+    activeLegend.remove();
+    activeLegend = null;
+  }
   if (activeLayer) {
     TP.map.removeLayer(activeLayer);
     activeLayer = null;
@@ -281,7 +286,49 @@ function showNISAR() {
     }
   };
 }
-const tools={forecast:showForecast,scar:showScar,exposure:showExposure,nisar:showNISAR};
+function showGlofOnMap(site, geometry, date) {
+  const styles = {
+    glacial_lake:{color:'#008c80', fillColor:'#49d7bc', fillOpacity:.5, weight:2},
+    historical_lake_inventory:{color:'#a66400', fillColor:'#efca78', fillOpacity:.1, weight:2, dashArray:'5 4'},
+    feeding_glacier_zone:{color:'#697e94', fillColor:'#b3bdc6', fillOpacity:.2, weight:1.5},
+  };
+  clearAnalysisLayer();
+  activeLayer = L.geoJSON(geometry, {
+    style:f => styles[f.properties.layer] || styles.feeding_glacier_zone,
+    onEachFeature(f, layer) {
+      const p = f.properties;
+      const label = p.layer === 'glacial_lake' ? 'Experimental radar water' :
+        p.layer === 'historical_lake_inventory' ? 'India / NRSC historical lake inventory' : 'GLIMS historical glacier candidate';
+      layer.bindPopup(`<strong>${escape(label)}</strong><br>${escape(p.date || p.source_image_date || p.src_date || 'Date unavailable')}<br>Risk not assessed.`);
+    },
+  }).addTo(TP.map);
+  activeLegend = L.control({position:'bottomleft'});
+  activeLegend.onAdd = () => {
+    const el = L.DomUtil.create('div', 'tp-glof-legend');
+    const hasInventory = geometry.features.some(f => f.properties.layer === 'historical_lake_inventory');
+    el.innerHTML = `<strong>${escape(site.name)} · ${escape(date)}</strong><span><i style="background:#49d7bc"></i>Experimental radar water · ESA Sentinel-1</span>` +
+      (hasInventory ? '<span><i style="background:#efca78"></i>India / NRSC lake inventory · 2016</span>' : '') +
+      '<span><i style="background:#b3bdc6"></i>Historical glacier candidate · GLIMS</span><small>Separate observation dates · risk not assessed</small>';
+    L.DomEvent.disableClickPropagation(el);
+    return el;
+  };
+  activeLegend.addTo(TP.map);
+  TP.go('Map');
+  const [w,s,e,n] = site.lake_bbox;
+  TP.map.fitBounds([[s,w],[n,e]], {maxZoom:12,padding:[35,35]});
+  TP.toast(`${site.name}: experimental radar water ${date}. Historical outlines keep separate dates.`);
+  return true;
+}
+async function showGlof() {
+  try {
+    close();
+    const {openGlofPanel} = await import('./glof-mount.jsx');
+    openGlofPanel(showGlofOnMap);
+  } catch {
+    TP.toast('The GLOF panel could not open. Reload the page and try again.');
+  }
+}
+const tools={forecast:showForecast,scar:showScar,exposure:showExposure,nisar:showNISAR,glof:showGlof};
 $('#ds').addEventListener('click',event=>{
   const button=event.target.closest('[data-tp-open]');
   if(button&&tools[button.dataset.tpOpen]){event.preventDefault();tools[button.dataset.tpOpen]();}
@@ -295,7 +342,7 @@ const legalBasemaps=new Set(['Satellite','Streets','Topographic']);
 async function applyAction(action) {
   if(!action||typeof action!=='object')return;
   const kind=action.type, name=action.value;
-  if(kind==='open_tool'&&legalPanels.has(name)){tools[name]();return;}
+  if(kind==='open_tool'&&legalPanels.has(name)){await tools[name]();return;}
   if(kind==='basemap'&&legalBasemaps.has(name)){TP.setBase(name);return;}
   if(kind==='tab'&&legalTabs.has(name)){TP.openTab(name);return;}
   if(kind==='page'&&legalPages.has(name)){TP.go(name);return;}
@@ -331,3 +378,6 @@ window.tpAsk=async raw=>{
     chatSay('The assistant service is temporarily unavailable. The Dataset sidebar and map controls remain usable. ('+e.message+')');
   }finally{chatInFlight=false;}
 };
+
+// Open shared GLOF links on the same map-first entry page as the sidebar.
+if (new URLSearchParams(location.search).has('glof')) showGlof();

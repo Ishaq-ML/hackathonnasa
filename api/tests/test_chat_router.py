@@ -37,6 +37,17 @@ class ChatRouterTests(unittest.TestCase):
         out=self.action("Show real NISAR data")
         self.assertEqual(out["actions"][0]["value"],"nisar")
 
+    def test_glof_opens_monitoring_instead_of_landslide_forecast(self):
+        out=self.action("Show GLOF forecast")
+        self.assertEqual(out["actions"][0]["value"],"glof")
+        self.assertIn("not a breach forecast",out["reply"])
+
+    def test_glof_accuracy_does_not_report_the_optical_scar_benchmark(self):
+        out=self.action("How accurate is GLOF monitoring?")
+        self.assertEqual(out["actions"][0]["value"],"glof")
+        self.assertNotIn("66.2",out["reply"])
+        self.assertIn("breach prediction accuracy has not been established",out["reply"])
+
     def test_basemap(self):
         self.assertIn({"type":"basemap","value":"Satellite"},self.action("satellite imagery")["actions"])
 

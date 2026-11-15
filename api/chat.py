@@ -32,7 +32,7 @@ class handler(BaseHTTPRequestHandler):
             "framework":"LangGraph StateGraph (deterministic intent and action routing)",
             "generative_llm_configured":False,
             "stores_conversations":False,
-            "tools":["NASA LHASA forecast panel","Landslide scar comparison",
+            "tools":["Historical GLOF monitoring","NASA LHASA forecast panel","Landslide scar comparison",
                      "OSM human-exposure screen","NISAR evidence gallery",
                      "Whitelisted dataset layer toggles","Map and basemap navigation"],
             "limitations":"Does not issue emergency warnings or estimate casualties, future slope failure, or safety.",

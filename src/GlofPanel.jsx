@@ -38,7 +38,7 @@ function Signal({index, title, value, unit, dates, grade, children}) {
   </article>;
 }
 
-export default function GlofPanel() {
+export default function GlofPanel({ onShowOnMap, className = '' }) {
   const [catalog, setCatalog] = useState(null);
   const [countries, setCountries] = useState([]);
   const [sid, setSid] = useState('south_lhonak');
@@ -95,14 +95,13 @@ export default function GlofPanel() {
     setMapping(true); setMapError('');
     try {
       const geometry = await get({site:sid, view:'geometry', date:row.date}, AbortSignal.timeout(15000));
-      const { showGlofOnMap } = await import('./main.js');
-      if (showGlofOnMap(summary.site, geometry, row.date)) document.getElementById('glof-monitor').close();
+      if (onShowOnMap && await onShowOnMap(summary.site, geometry, row.date)) document.getElementById('glof-monitor').close();
       else setMapError('The interactive map is unavailable. The Equal Earth study map and downloads remain available.');
     } catch (e) { setMapError(e.message); }
     finally { setMapping(false); }
   }
 
-  return <dialog id="glof-monitor" aria-labelledby="glof-title" onClose={close}>
+  return <dialog id="glof-monitor" className={className} aria-labelledby="glof-title" onClose={close}>
     <header className="glof-heading">
       <div><span className="glof-kicker">GLACIAL LAKE OBSERVATORY</span><h2 id="glof-title">Read the lake and its glacier together</h2><p>Historical monitoring · event probability not assessed</p></div>
       <form method="dialog"><button className="quiet" aria-label="Close GLOF monitoring">×</button></form>
