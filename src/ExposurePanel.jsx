@@ -48,6 +48,20 @@ export default function ExposurePanel() {
     setLocationSource('manually selected map center (not a verified scar)');
   }
 
+  async function showBuildingsOnMap() {
+    if (!result) return;
+    try {
+      const { showExposureOnMap } = await import('./main.js');
+      if (showExposureOnMap(result)) {
+        document.getElementById('exposure-panel')?.close();
+      } else {
+        setError('The interactive map is unavailable; OSM counts remain visible.');
+      }
+    } catch {
+      setError('Map rendering failed; the numeric exposure report remains available.');
+    }
+  }
+
   async function check(event) {
     event.preventDefault();
     setResult(null);
@@ -111,6 +125,12 @@ export default function ExposurePanel() {
       <p>Nearest mapped building: <strong>{distance(result.nearest_m.buildings)}</strong>.
         Nearest road: <strong>{distance(result.nearest_m.roads)}</strong>.
         Total mapped buildings in query area: <strong>{count(result.counts.buildings_within_search_radius)}</strong>.</p>
+      <div className="lab-actions">
+        <button className="quiet lab-primary" type="button" onClick={showBuildingsOnMap}>
+          Show mapped buildings and roads on atlas
+        </button>
+        {result.map_features_truncated && <span>Map layer is truncated to 300 OSM elements; totals use all queried elements.</span>}
+      </div>
       <p><strong>What this does not know:</strong> whether any asset is downslope,
         debris travel direction, local slope stability, number of occupants,
         building vulnerability, or incomplete OSM coverage.
