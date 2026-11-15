@@ -1,5 +1,30 @@
 # TerraPulse
 
+## Human exposure screening (OpenStreetMap)
+
+The **Human exposure** map control performs one user-triggered, bounded
+OpenStreetMap query near a nominated landslide location. It measures geometric
+distance to building footprints, roads and sensitive facilities and reports
+**urgent/high/medium/low review priority**. It is **not** an earthquake,
+landslide danger, casualty, safety, or runout prediction; a site with no OSM
+buildings is not necessarily uninhabited.
+
+The scar U-Net (post-event Sentinel-2 + terrain) remains a distinct model.
+If a prepared inference JSON tile includes user-supplied `geo_bounds`
+[west, south, east, north] in EPSG:4326 and a nonempty `geo_source`,
+the model response includes the largest predicted scar component's approximate
+geographic centroid. A user can explicitly inspect mapped buildings there.
+The standard Landslide4Sense example has no trusted georeference and cannot
+be matched to buildings automatically.
+
+- Endpoint: `GET /api/exposure?lon=85.53&lat=28.29&radius_m=500`
+- Unit-tested geometry distances to actual mapped polygons/road lines
+- OSM data attribution: © OpenStreetMap contributors, ODbL,
+  https://www.openstreetmap.org/copyright
+- See [human exposure data and limitations](docs/landslide-human-exposure.md).
+- For public production scale, replace community Overpass queries with
+  maintained cached regional OSM extracts or a licensed provider.
+
 ## Landslide scar screening and GPU follow-up
 
 **What is a scar?** It is land visibly disturbed *after* a landslide. The
