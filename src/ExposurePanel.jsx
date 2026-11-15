@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 function count(value) {
   return Number.isInteger(value) ? value.toLocaleString() : 'Unavailable';
@@ -20,6 +20,22 @@ export default function ExposurePanel() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [locationSource, setLocationSource] = useState('manual');
+
+  useEffect(() => {
+    const handle = event => {
+      const {lon, lat, image_source} = event.detail || {};
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      setCoords(current => ({...current, lon: lon.toFixed(6), lat: lat.toFixed(6)}));
+      setLocationSource(image_source || 'user-supplied georeferenced scar candidate');
+      setResult(null);
+      setError('');
+      const dialog = document.getElementById('exposure-panel');
+      if (dialog && !dialog.open) dialog.showModal();
+    };
+    window.addEventListener('tp:scar-location', handle);
+    return () => window.removeEventListener('tp:scar-location', handle);
+  }, []);
 
   async function centerOnMap() {
     const { forecastMapCenter } = await import('./main.js');
@@ -29,6 +45,7 @@ export default function ExposurePanel() {
       return;
     }
     setCoords(old => ({...old, lon: position.lng.toFixed(5), lat: position.lat.toFixed(5)}));
+    setLocationSource('manually selected map center (not a verified scar)');
   }
 
   async function check(event) {
@@ -79,6 +96,7 @@ export default function ExposurePanel() {
       <button className="quiet" type="button" onClick={centerOnMap}>Use map center</button>
       <button className="quiet lab-primary" type="submit" disabled={loading}>Check mapped assets</button>
     </form>
+    <p>Location provenance: <strong>{locationSource}</strong>. The selected location is not automatically verified as a landslide.</p>
     {loading && <p role="status">Comparing mapped building footprints and road lines…</p>}
     {error && <p role="alert">{error} A failed map query must not be interpreted as zero exposure.</p>}
     {result && <section className="exposure-results">
