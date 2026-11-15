@@ -89,9 +89,9 @@ export default function LandslideLab() {
 
   const screening = result?.screening;
   const evaluation = result?.example_evaluation;
-  const views = result?.labels
+  const views = result?.labels && result?.rgb
     ? ['satellite', 'reference', 'predicted', 'errors']
-    : ['satellite', 'predicted'];
+    : result?.rgb ? ['satellite', 'predicted'] : ['predicted'];
 
   return <dialog id="landslide-lab" aria-labelledby="landslide-title">
     <div className="discovery-heading">
