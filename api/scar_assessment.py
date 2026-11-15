@@ -32,6 +32,7 @@ def assess(scores, width, height, threshold):
         count = 0
         peak = 0.0
         sum_score = 0.0
+        sumrow = sumcol = 0.0
         minrow = height
         mincol = width
         maxrow = maxcol = 0
@@ -39,6 +40,8 @@ def assess(scores, width, height, threshold):
             pixel = queue.popleft()
             row, col = divmod(pixel, width)
             count += 1
+            sumrow += row + 0.5
+            sumcol += col + 0.5
             confidence = float(scores[pixel])
             sum_score += confidence
             peak = max(peak, confidence)
@@ -53,6 +56,7 @@ def assess(scores, width, height, threshold):
         components.append({
             "pixels": count,
             "bbox_pixels": [mincol, minrow, maxcol + 1, maxrow + 1],
+            "centroid_pixel": [round(sumcol / count, 3), round(sumrow / count, 3)],
             "mean_model_score": round(sum_score / count, 4),
             "peak_model_score": round(peak, 4),
         })
