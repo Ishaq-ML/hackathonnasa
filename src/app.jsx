@@ -5,6 +5,7 @@ import LandslideLab from './LandslideLab.jsx';
 import RadarExample from './RadarExample.jsx';
 import ForecastPanel from './ForecastPanel.jsx';
 import ExposurePanel from './ExposurePanel.jsx';
+import LandslideWorkspace from './LandslideWorkspace.jsx';
 import './style.css';
 
 function App() {
@@ -34,9 +35,7 @@ function App() {
       <div className="map-tools">
         <label className="control" id="basemap-control"><span className="sr-only">Base map</span><select id="basemap"><option value="satellite">Satellite</option><option value="atlas">Atlas</option></select></label>
         <button className="quiet" id="reset-map" type="button" aria-label="Reset map view" title="Reset map view">⌂</button>
-        <button className="quiet forecast-entry" type="button" onClick={() => document.getElementById("forecast").showModal()}>Landslide forecast</button>
-        <button className="quiet" type="button" onClick={() => document.getElementById("landslide-lab").showModal()}>Detect scars</button>
-        <button className="quiet" type="button" onClick={() => document.getElementById("exposure-panel").showModal()}>Human exposure</button>
+        <button className="quiet landslide-analysis-entry" type="button" onClick={() => document.getElementById("landslide-workspace").showModal()}>Landslide analysis</button>
         <button className="quiet" id="find-radar" type="button">Find NISAR</button>
         <button className="quiet" id="ask-toggle" type="button" aria-expanded="false" aria-controls="ask-panel">Ask TerraPulse</button>
       </div>
@@ -88,6 +87,7 @@ function App() {
     <ul aria-label="Matching observations"></ul>
   </dialog>
   <dialog id="reference" aria-label="Observation sources"><div id="reference-content"></div><form method="dialog"><button className="quiet" type="submit">Close</button></form></dialog>
+  <LandslideWorkspace />
   <LandslideLab />
   <ForecastPanel />
   <ExposurePanel />
