@@ -383,6 +383,7 @@ export function showForecastOnMap({ bounds, preview_png }) {
   map.addLayer({ id, type: "raster", source: id, paint: { "raster-resampling": "nearest", "raster-fade-duration": 0 } });
   map.fitBounds([[west, south], [east, north]], { padding: 45, maxZoom: 10, duration: 0 });
   byId("map-note").textContent = "Next-day rainfall-triggered landslide hazard · NASA LHASA";
+  byId("legend").innerHTML = '<strong>LHASA hazard score</strong><div class="hazard-gradient"></div><div class="legend-values"><span>Lower</span><span>Higher</span></div>';
   return true;
 }
 

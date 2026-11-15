@@ -1,103 +1,94 @@
-"""TerraPulse landslide candidate inference for Vercel and local HTTP."""
+"""Serve the validated Landslide4Sense segmentation model."""
 from functools import lru_cache
 import gzip
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
-from math import exp, isfinite
+from math import isfinite
 from pathlib import Path
-from struct import Struct
 from urllib.parse import parse_qs, urlsplit
 
+import numpy as np
+import onnxruntime as ort
+
 DATA = Path(__file__).resolve().parents[1] / "server_data"
-MAX_PIXELS = 128 * 128
+TILE_SIZE = 128
 MAX_BYTES = 4_000_000
-FLOAT32 = Struct("f")
-
-
-def float32(value):
-    return FLOAT32.unpack(FLOAT32.pack(value))[0]
-
-
-def read_asset(name):
-    with gzip.open(DATA / name, "rt", encoding="utf-8") as asset:
-        return json.load(asset)
+BANDS = [f"B{band:02}" for band in range(1, 13)] + ["slope", "elevation"]
 
 
 @lru_cache(maxsize=1)
-def load_model():
-    model = read_asset("landslide_model.json.gz")
-    compiled = []
-    for left, right, features, splits, default in model["trees"]:
-        compiled.append(tuple(
-            (feature, float32(split), lchild, rchild, dleft)
-            for lchild, rchild, feature, split, dleft in zip(left, right, features, splits, default)
-        ))
-    return model["card"], model["base_margin"], tuple(compiled)
+def model_card():
+    metrics = json.loads((DATA / "landslide_spatial_metrics.json").read_text(encoding="utf-8"))
+    return {
+        "model": "TerraPulse Sentinel-2 + Terrain U-Net ensemble",
+        "model_version": "spatial-detector-1",
+        "revision": metrics["revision"],
+        "source": "https://huggingface.co/datasets/ibm-nasa-geospatial/Landslide4sense",
+        "input": "12 Sentinel-2 bands and ALOS slope/elevation",
+        "bands": BANDS,
+        "threshold": metrics["validation"]["threshold"],
+        "validation": metrics["validation"],
+        "test": metrics["test"],
+        "chips": {name: len(ids) for name, ids in metrics["chip_ids"].items()},
+        "task": "post-event scar mapping",
+    }
+
+
+@lru_cache(maxsize=1)
+def session():
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 2
+    options.inter_op_num_threads = 1
+    return ort.InferenceSession(str(DATA / "landslide_spatial.onnx"), sess_options=options,
+                                providers=["CPUExecutionProvider"])
 
 
 def parse_tile(payload):
     if not isinstance(payload, dict):
         raise ValueError("Expected a JSON object with width, height and rows.")
     width, height, rows = (payload.get(key) for key in ("width", "height", "rows"))
-    if type(width) is not int or type(height) is not int or not (1 <= width <= 128 and 1 <= height <= 128):
+    if type(width) is not int or type(height) is not int or not (1 <= width <= TILE_SIZE and 1 <= height <= TILE_SIZE):
         raise ValueError("Width and height must be integers from 1 to 128.")
     if not isinstance(rows, list) or len(rows) != width * height:
         raise ValueError("Supply one row per pixel, ordered left to right and top to bottom.")
-    clean = []
     for row in rows:
-        if not isinstance(row, list) or len(row) != 14:
+        if not isinstance(row, list) or len(row) != len(BANDS):
             raise ValueError("Each pixel requires all 14 Landslide4Sense channels.")
-        values = []
         for value in row:
-            if value is None:
-                values.append(None)
-                continue
-            if type(value) not in (int, float) or not isfinite(value) or abs(value) > 3.4e38:
+            if value is not None and (type(value) not in (int, float) or not isfinite(value) or abs(value) > 3.4e38):
                 raise ValueError("Band values must be finite float32 numbers or null.")
-            values.append(float32(value))
-        clean.append(values)
-    return width, height, clean
+    tile = np.asarray(rows, dtype=np.float32).reshape(height, width, len(BANDS))
+    return width, height, tile
 
 
-def predict(rows):
-    _, base, trees = load_model()
-    scores = []
-    for row in rows:
-        if all(value is None for value in row):
-            scores.append(None)
-            continue
-        margin = base
-        for tree in trees:
-            index = 0
-            while True:
-                band, split, left, right, default_left = tree[index]
-                if left == -1:
-                    margin = float32(margin + split)
-                    break
-                value = row[band]
-                use_left = default_left if value is None else value < split
-                index = left if use_left else right
-        scores.append(float32(1 / (1 + exp(-margin))))
-    return scores
+def predict(width, height, tile):
+    valid = np.isfinite(tile).any(axis=2).reshape(-1)
+    if not valid.any():
+        return [None] * len(valid)
+    pad = ((0, TILE_SIZE - height), (0, TILE_SIZE - width), (0, 0))
+    inputs = np.ascontiguousarray(np.pad(tile, pad, mode="edge").transpose(2, 0, 1)[None])
+    values = session().run(["scores"], {"tile": inputs})[0][0, 0, :height, :width].reshape(-1)
+    return [float(value) if defined else None for value, defined in zip(values, valid)]
 
 
 def result(payload):
-    width, height, rows = parse_tile(payload)
-    card, _, _ = load_model()
+    width, height, tile = parse_tile(payload)
+    card = model_card()
     threshold = card["threshold"]
-    scores = predict(rows)
+    scores = predict(width, height, tile)
     return {
         "width": width, "height": height, "threshold": threshold, "scores": scores,
         "candidate_pixels": sum(score is not None and score >= threshold for score in scores),
         "valid_pixels": sum(score is not None for score in scores),
-        "model_revision": card["revision"],
+        "model_revision": card["revision"], "model_version": card["model_version"],
     }
 
 
 @lru_cache(maxsize=1)
 def example_result():
-    example = read_asset("landslide_example.json.gz")
-    return result(example) | {key: example[key] for key in ("id", "rgb", "labels")}
+    with gzip.open(DATA / "landslide_example.json.gz", "rt", encoding="utf-8") as asset:
+        tile = json.load(asset)
+    return result(tile) | {key: tile[key] for key in ("id", "rgb", "labels")}
 
 
 class handler(BaseHTTPRequestHandler):
@@ -112,7 +103,7 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         query = parse_qs(urlsplit(self.path).query)
-        body = example_result() if query.get("example") == ["1"] else load_model()[0]
+        body = example_result() if query.get("example") == ["1"] else model_card()
         self.send_json(body, cache="public, max-age=300, s-maxage=3600")
 
     def do_POST(self):
@@ -135,10 +126,10 @@ class handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     from forecast import handler as forecast_handler
 
-    class local_handler(handler):
+    class LocalHandler(handler):
         def do_GET(self):
             if urlsplit(self.path).path == "/api/forecast":
                 return forecast_handler.do_GET(self)
             return super().do_GET()
 
-    ThreadingHTTPServer(("127.0.0.1", 8765), local_handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", 8765), LocalHandler).serve_forever()

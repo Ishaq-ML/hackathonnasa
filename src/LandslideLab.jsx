@@ -85,8 +85,8 @@ export default function LandslideLab() {
       </div>}
       <details>
         <summary>Tile format and validation</summary>
-        <p>Send JSON with <code>width</code>, <code>height</code>, and <code>rows</code>. Dimensions are 1–128 pixels. Supply one row per pixel in image order. Use Sentinel-2 B01 through B12, then ALOS slope and elevation, in the original Landslide4Sense units. Set missing bands to null.</p>
-        <p>On 80 held-out benchmark chips, average precision was 58.3% and F1 was 56.0%. Performance in new regions is unmeasured.</p>
+        <p>Send JSON with <code>width</code>, <code>height</code>, and <code>rows</code>. Dimensions are 1–128 pixels. Supply one row per pixel in image order. Use Sentinel-2 B01 through B12, then ALOS slope and elevation, in the original Landslide4Sense units. Set missing bands to null. Full 128 × 128 tiles provide the spatial context used in training.</p>
+        <p>On 80 held-out benchmark chips, average precision was 69.1% and F1 was 66.2%. Performance in new regions is unmeasured.</p>
       </details>
     </dialog>
   );
