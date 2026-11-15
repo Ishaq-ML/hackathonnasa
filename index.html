@@ -279,10 +279,12 @@ function groupEl(name,items,q){const det=document.createElement('details');det.o
  const on=items.filter(d=>state[d.id]&&state[d.id].on).length;
  det.innerHTML=`<summary><span>${ICON[name]||'📂'} ${name}</span><em>${on?on+' on · ':''}${items.length}</em></summary>`;
  items.forEach(d=>det.appendChild(row(d)));
- if(name==='Landslides'){
+ if(name==='Landslides'||name==='Glaciers & ice'){
    const actions=document.createElement('div');
    actions.className='tp-landslide-tools';
-   actions.innerHTML='<div class="g">Analysis tools</div><button type="button" data-tp-open="forecast">NASA LHASA · Tomorrow forecast</button><button type="button" data-tp-open="scar">Detect post-event scars</button><button type="button" data-tp-open="exposure">Buildings &amp; human exposure</button><button type="button" data-tp-open="nisar">NISAR radar observations</button><small>Forecast · observed scars · mapped exposure are separate measurements.</small>';
+   actions.innerHTML=name==='Landslides'
+    ? '<div class="g">Landslide analysis tools</div><button type="button" data-tp-open="forecast">NASA LHASA · Tomorrow forecast</button><button type="button" data-tp-open="scar">Detect post-event scars</button><button type="button" data-tp-open="exposure">Buildings &amp; human exposure</button><button type="button" data-tp-open="nisar">NISAR radar observations</button><small>Forecast, scar, and exposure evidence are different scientific quantities.</small>'
+    : '<div class="g">Glacial lake observatory</div><button type="button" data-tp-open="glof">Monitor GLOFs · Five real lakes</button><small>253 dated radar observations, glacier movement, missing-data and source evidence. Not a breach forecast.</small>';
    det.appendChild(actions);
  }
  det.ontoggle=()=>{det.open?openG.add(name):openG.delete(name)};det.querySelector('summary').addEventListener('click',()=>{focusG=name;syncSide()});return det}
