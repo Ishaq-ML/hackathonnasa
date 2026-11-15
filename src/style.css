@@ -196,3 +196,22 @@ dialog li { margin-bottom: 5px; }
 .forecast-scale-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px; }
 #forecast a { color: var(--blue); text-decoration: underline; }
 .hazard-gradient { min-width: 104px; height: 6px; margin-block: 6px; background: linear-gradient(90deg,#254871,#307da8,#66c8c0,#f4ca60,#ee803c,#c63d41); }
+
+
+/* Landslide scar model: simultaneous evidence rather than a toggle-only demo. */
+#landslide-lab { width: min(860px, calc(100vw - 24px)); }
+.scar-results { margin-top: 18px; }
+.scar-results > h3 { font-size: 15px; margin-bottom: 10px; }
+.scar-comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.scar-tile { margin: 0; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #172124; }
+.scar-tile figcaption { color: #dceae6; font-size: 12px; margin-bottom: 8px; min-height: 16px; }
+.scar-tile canvas { display: block; width: 100%; max-height: 270px; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; background: #101819; }
+.scar-evaluation, .scar-screening { margin-top: 12px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 5px; background: #192628; }
+.scar-screening strong { color: #e5eee9; }
+#landslide-lab .scar-evaluation p, #landslide-lab .scar-screening p { margin: 5px 0; line-height: 1.55; }
+#landslide-lab .scar-key { color: #cedfd7; }
+@media (max-width: 560px) {
+  .scar-comparison-grid { grid-template-columns: 1fr; }
+  .scar-tile canvas { max-height: 320px; }
+  #landslide-lab { padding: 14px; }
+}
