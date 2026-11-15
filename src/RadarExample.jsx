@@ -1,3 +1,4 @@
+import WorkflowReturn from './WorkflowReturn.jsx';
 import React, { useState } from 'react';
 
 const layers = [
@@ -13,6 +14,7 @@ export default function RadarExample() {
   const candidates = layer.file === 'candidates';
 
   return <dialog id="radar-example" aria-labelledby="radar-example-title">
+    <WorkflowReturn stage="NISAR / Separate monitoring evidence" />
     <div className="discovery-heading">
       <div><h2 id="radar-example-title">Himalayan post-event radar monitoring</h2><p>NISAR L-band GCOV · 30 Oct to 11 Nov 2026</p></div>
       <form method="dialog"><button className="quiet" aria-label="Close radar comparison">×</button></form>

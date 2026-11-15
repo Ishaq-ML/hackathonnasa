@@ -1,3 +1,4 @@
+import WorkflowReturn from './WorkflowReturn.jsx';
 import React, { useEffect, useState } from 'react';
 
 function count(value) {
@@ -86,6 +87,7 @@ export default function ExposurePanel() {
   }
 
   return <dialog id="exposure-panel" aria-labelledby="exposure-title">
+    <WorkflowReturn stage="03 / Mapped human exposure" />
     <div className="discovery-heading">
       <div>
         <h2 id="exposure-title">People and infrastructure nearby</h2>

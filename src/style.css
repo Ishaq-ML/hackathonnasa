@@ -234,3 +234,108 @@ dialog li { margin-bottom: 5px; }
 .exposure-stat-grid span { color: var(--muted); font-size: 11px; }
 #exposure-panel details { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; font-size: 12px; }
 @media (max-width: 510px) { .exposure-stat-grid { grid-template-columns: 1fr 1fr; gap: 6px; } .exposure-form label { flex: 1; } .exposure-form input, .exposure-form select { width: 100%; } }
+
+
+/* TerraPulse landslide analysis: preserve existing typography, map, and palette.
+   The three steps are separated by scientific purpose, not fake risk badges. */
+.map-tools .landslide-analysis-entry {
+  background: #d2e8dc;
+  color: #142b29;
+  border-color: #d2e8dc;
+  font-weight: 720;
+  letter-spacing: -.01em;
+  padding-inline: 12px;
+}
+.map-tools .landslide-analysis-entry:hover { background: #e9f4ed; border-color: #e9f4ed; }
+#landslide-workspace {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: min(89svh, 900px);
+  overflow-y: auto;
+  padding: clamp(18px, 3vw, 32px);
+  border-radius: 9px;
+  background: #172122;
+  border: 1px solid #4c5d55;
+  box-shadow: 0 22px 72px #050d0e80;
+  color: #eaf0ec;
+}
+#landslide-workspace::backdrop { background: #050d0dc7; backdrop-filter: blur(3px); }
+#landslide-workspace .landslide-workspace-heading { align-items: flex-start; margin-bottom: 26px; }
+#landslide-workspace h2 {
+  font-size: clamp(25px, 3.2vw, 36px);
+  line-height: 1.06;
+  font-weight: 680;
+  letter-spacing: -.045em;
+  margin: 8px 0 10px;
+  max-width: 780px;
+}
+#landslide-workspace .landslide-workspace-lead {
+  color: #b7c9c2;
+  max-width: 650px;
+  line-height: 1.5;
+  font-size: 13px;
+}
+.landslide-eyebrow {
+  color: #a8dfd2 !important;
+  font-size: 10px !important;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-weight: 690;
+}
+#landslide-workspace .landslide-workspace-close {
+  font-size: 23px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.landslide-stage-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.landslide-stage { display: flex; flex-direction: column; min-width: 0; padding: clamp(15px, 2vw, 22px); background: #1d292a; }
+.landslide-stage + .landslide-stage { border-left: 1px solid var(--line); }
+.landslide-stage-top { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.landslide-step { font-variant-numeric: tabular-nums; color: #a8dfd2; font-size: 12px; font-weight: 740; }
+.landslide-stage-label { font-size: 10px; letter-spacing: .025em; color: #adbfba; }
+#landslide-workspace .landslide-stage h3 { font-size: clamp(17px, 1.8vw, 20px); line-height: 1.18; letter-spacing: -.035em; font-weight: 650; margin-bottom: 7px; }
+#landslide-workspace .landslide-source { color: #a8dfd2; font-size: 11px; }
+#landslide-workspace .landslide-stage-description { font-size: 13px; line-height: 1.55; color: #e0ebe6; margin-top: 18px; }
+.landslide-stage-footer { margin-top: auto; padding-top: 35px; }
+#landslide-workspace .landslide-stage-footer p { font-size: 11px; line-height: 1.5; color: #b7c5c0; min-height: 49px; margin-bottom: 17px; }
+.landslide-stage-action { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; color: #132623; background: #bde4d9; border-color: #bde4d9; font-size: 12px; font-weight: 690; }
+.landslide-stage-action:hover { background: #ddf2ea; border-color: #ddf2ea; }
+.landslide-stage-action span { font-size: 18px; line-height: 1; }
+.landslide-hub-radar { margin-top: 13px; padding: 20px; display: flex; align-items: center; justify-content: space-between; gap: 22px; border: 1px solid #3b4b46; border-radius: 5px; background: #192525; }
+#landslide-workspace .landslide-hub-radar h3 { font-size: 16px; margin: 5px 0; }
+#landslide-workspace .landslide-hub-radar p:not(.landslide-eyebrow) { font-size: 12px; color: #b4c6be; max-width: 610px; line-height: 1.55; }
+.landslide-hub-radar button { flex: none; padding: 9px 12px; }
+.landslide-workspace-footer { display: flex; gap: 8px 30px; flex-wrap: wrap; margin-top: 19px; font-size: 11px; color: #a4b8b0; }
+.workflow-return { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 17px; }
+.workflow-return .quiet { border-color: #53625e; background: transparent; font-size: 11px; }
+.workflow-return .workflow-stage-note { color: #a8dfd2; font-size: 10px; font-weight: 670; letter-spacing: .075em; text-transform: uppercase; }
+#landslide-lab .scar-model-summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 15px; border-block: 1px solid #394b46; padding: 12px 0; margin: 14px 0 3px; }
+#landslide-lab .scar-model-summary strong { font-size: 22px; letter-spacing: -.04em; color: #e9f2ed; }
+#landslide-lab .scar-model-summary span { font-size: 11px; color: #aabdb5; }
+#landslide-lab .scar-model-summary .scar-model-note { margin-left: auto; }
+#landslide-workspace button:focus-visible, .workflow-return button:focus-visible { outline-offset: 3px; }
+@media (max-width: 880px) {
+  .landslide-stage-grid { grid-template-columns: 1fr; }
+  .landslide-stage { display: grid; grid-template-columns: 1.1fr .9fr; column-gap: 14px; }
+  .landslide-stage-top, .landslide-stage h3, .landslide-source, .landslide-stage-description { grid-column: 1; }
+  .landslide-stage-top { margin-bottom: 8px; }
+  .landslide-stage-footer { grid-column: 2; grid-row: 1 / span 4; margin-top: 0; padding-top: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
+  #landslide-workspace .landslide-stage-footer p { min-height: 0; margin: 0; }
+  .landslide-stage + .landslide-stage { border-left: 0; border-top: 1px solid var(--line); }
+  #landslide-workspace .landslide-stage-description { margin-top: 12px; }
+}
+@media (max-width: 600px) {
+  #landslide-workspace { width: calc(100vw - 16px); max-height: calc(100svh - 18px); padding: 17px; }
+  #landslide-workspace .landslide-workspace-heading { margin-bottom: 18px; }
+  .landslide-stage { display: flex; padding: 16px; }
+  .landslide-stage-top { margin-bottom: 9px; }
+  .landslide-stage-footer { display: block; margin-top: 11px; }
+  #landslide-workspace .landslide-stage-footer p { margin-bottom: 12px; }
+  .landslide-hub-radar { align-items: start; flex-direction: column; gap: 13px; padding: 16px; }
+  .landslide-hub-radar button { width: 100%; }
+  .map-tools { right: 8px; left: 8px; top: 8px; max-width: calc(100% - 16px); overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; padding-bottom: 4px; }
+  .map-tools .quiet, .map-tools .control { flex: 0 0 auto; white-space: nowrap; }
+  .map-note { top: 48px; }
+  #landslide-lab .scar-model-summary .scar-model-note { margin-left: 0; }
+}
