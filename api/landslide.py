@@ -86,8 +86,36 @@ def result(payload):
     threshold = card["threshold"]
     scores = predict(width, height, tile)
     screening = assess(scores, width, height, threshold)
+    # Only a supplied WGS84 georeference can link a predicted pixel to
+    # OpenStreetMap. A generic Landslide4Sense benchmark chip has no geolocation.
+    location = None
+    if payload.get("geo_bounds") is not None:
+        bounds = payload["geo_bounds"]
+        source = payload.get("geo_source")
+        if not (isinstance(bounds, list) and len(bounds) == 4
+                and all(type(v) in (int, float) and isfinite(v) for v in bounds)):
+            raise ValueError("geo_bounds must be [west, south, east, north] in EPSG:4326")
+        west, south, east, north = map(float, bounds)
+        if not (-180 <= west < east <= 180 and -80 <= south < north <= 80
+                and east - west <= .2 and north - south <= .2):
+            raise ValueError("geo_bounds must be a small valid geographic WGS84 tile")
+        if not isinstance(source, str) or not (8 <= len(source.strip()) <= 300):
+            raise ValueError("geo_source must name the independently georeferenced image source")
+        if screening["regions"]:
+            first = screening["regions"][0]
+            col, row = first["centroid_pixel"]
+            location = {
+                "lon": west + (east - west) * col / width,
+                "lat": north - (north - south) * row / height,
+                "input_bounds": [west, south, east, north],
+                "image_source": source.strip(),
+                "region_pixels": first["pixels"],
+                "status": "unverified_user_supplied_georeference",
+                "warning": "Verify this georeference and scar candidate with source imagery; not a confirmed landslide."
+            }
     return {
         "width": width, "height": height, "threshold": threshold, "scores": scores,
+        "candidate_location": location,
         "candidate_pixels": screening["candidate_pixels"],
         "valid_pixels": screening["valid_pixels"],
         "input_quality": {
