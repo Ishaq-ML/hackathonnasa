@@ -365,6 +365,82 @@ export function forecastMapCenter() {
   return mapReady ? map.getCenter().wrap() : null;
 }
 
+const exposureLayers = [
+  'osm-human-buildings', 'osm-human-building-outline', 'osm-human-roads',
+  'osm-human-paths', 'osm-human-facilities', 'osm-human-center-layer',
+];
+const exposureSources = ['osm-human-assets', 'osm-human-center'];
+
+function clearExposureLayers() {
+  if (!mapReady || !map) return;
+  for (const id of exposureLayers) if (map.getLayer(id)) map.removeLayer(id);
+  for (const id of exposureSources) if (map.getSource(id)) map.removeSource(id);
+}
+
+export function showExposureOnMap(report) {
+  if (!mapReady || !report?.location || !report?.osm_geojson?.features) return false;
+  current = null;
+  mode = null;
+  focusedCase = 'world';
+  imageryKey = null;
+  fallbackSelection = null;
+  setUrl(false);
+  render();
+  clearExposureLayers();
+  map.addSource('osm-human-assets', {
+    type: 'geojson',
+    data: report.osm_geojson,
+    attribution: '© OpenStreetMap contributors · ODbL',
+  });
+  map.addLayer({
+    id: 'osm-human-buildings', type: 'fill', source: 'osm-human-assets',
+    filter: ['==', ['get', 'kind'], 'buildings'],
+    paint: {'fill-color': '#eeb563', 'fill-opacity': 0.5},
+  });
+  map.addLayer({
+    id: 'osm-human-building-outline', type: 'line', source: 'osm-human-assets',
+    filter: ['==', ['get', 'kind'], 'buildings'],
+    paint: {'line-color': '#ffdc99', 'line-width': 1.4},
+  });
+  map.addLayer({
+    id: 'osm-human-roads', type: 'line', source: 'osm-human-assets',
+    filter: ['==', ['get', 'kind'], 'roads'],
+    paint: {'line-color': '#e9e5da', 'line-width': 2.3},
+  });
+  map.addLayer({
+    id: 'osm-human-paths', type: 'line', source: 'osm-human-assets',
+    filter: ['==', ['get', 'kind'], 'paths'],
+    paint: {'line-color': '#91adb6', 'line-width': 1.3, 'line-dasharray': [3, 3]},
+  });
+  map.addLayer({
+    id: 'osm-human-facilities', type: 'circle', source: 'osm-human-assets',
+    filter: ['==', ['get', 'kind'], 'sensitive_places'],
+    paint: {'circle-color': '#db6b75', 'circle-radius': 5},
+  });
+  const {lon, lat, radius_m} = report.location;
+  map.addSource('osm-human-center', {
+    type: 'geojson',
+    data: {type: 'Feature', geometry: {type: 'Point', coordinates: [lon, lat]}, properties: {}},
+  });
+  map.addLayer({
+    id: 'osm-human-center-layer', type: 'circle', source: 'osm-human-center',
+    paint: {'circle-color': '#fc7373', 'circle-radius': 7, 'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff'},
+  });
+  const dy = radius_m / 111195;
+  const dx = radius_m / (111320 * Math.cos(lat * Math.PI / 180));
+  map.fitBounds([[lon - dx, lat - dy], [lon + dx, lat + dy]],
+    {padding: 65, maxZoom: 15, duration: 0});
+  byId('map-note').textContent =
+    'OSM mapped assets near the nominated site · proximity is NOT debris-runout danger';
+  byId('legend').innerHTML =
+    '<strong>Human exposure context (OSM)</strong>' +
+    '<div class="legend-values"><span>Gold: buildings</span><span>White: roads</span>' +
+    '<span>Red: nominated point</span></div>' +
+    '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OSM contributors · ODbL</a>';
+  return true;
+}
+
 export function showForecastOnMap({ bounds, preview_png }) {
   if (!mapReady) return false;
   current = null;
@@ -548,6 +624,7 @@ async function updateMap() {
   world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
+  clearExposureLayers();
   for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates','coolr-outlines','lhasa-forecast']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);

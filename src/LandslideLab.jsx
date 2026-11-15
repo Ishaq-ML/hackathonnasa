@@ -141,6 +141,17 @@ export default function LandslideLab() {
         <p>{result.input_quality?.incomplete_pixels?.toLocaleString() ?? '0'} of
           {' '}{(result.width * result.height).toLocaleString()} pixels have missing required input bands
           and were left unscored. Model scores are <strong>not calibrated hazard probabilities</strong>.</p>
+        {result.candidate_location ? <div className="lab-actions">
+          <button className="quiet lab-primary" type="button" onClick={() => {
+            window.dispatchEvent(new CustomEvent('tp:scar-location', {detail: result.candidate_location}));
+          }}>Check buildings near this mapped scar candidate</button>
+          <p>The location comes from your supplied WGS84 bounds, not from the image itself.
+             Confirm it against the source scene before interpreting OSM distances.</p>
+        </div> : <p><strong>Human exposure cannot be linked to this tile yet.</strong>
+          There is no verified geographic footprint for the candidate. To enable
+          the building check, upload a prepared tile with <code>geo_bounds</code>
+          [west, south, east, north] in WGS84 and a <code>geo_source</code>
+          identifying the georeferenced satellite raster.</p>}
       </div>
     </div>}
     <details>
