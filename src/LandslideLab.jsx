@@ -1,27 +1,61 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-function Chip({ result, layer }) {
+const viewNames = {
+  satellite: 'Satellite image',
+  reference: 'Mapped landslide (ground truth)',
+  predicted: 'Our U-Net prediction',
+  errors: 'Correct / false / missed pixels',
+};
+
+function TileView({ result, view }) {
   const canvas = useRef(null);
   useEffect(() => {
-    const context = canvas.current.getContext('2d');
+    const node = canvas.current;
+    if (!node) return;
+    const context = node.getContext('2d');
     const frame = context.createImageData(result.width, result.height);
-    result.scores.forEach((score, pixel) => {
-      const rgb = result.rgb?.slice(pixel * 3, pixel * 3 + 3) ?? [34, 44, 46];
-      const candidate = score !== null && score >= result.threshold;
-      const highlighted = layer === 'labels' ? result.labels[pixel] === 1 : layer === 'model' && candidate;
-      const shade = highlighted ? (layer === 'labels' ? [121, 230, 214] : [255, 178, 79]) : rgb;
-      frame.data.set([...shade, score === null ? 0 : 255], pixel * 4);
-    });
+    const labels = Array.isArray(result.labels) ? result.labels : null;
+    for (let pixel = 0; pixel < result.width * result.height; pixel++) {
+      const score = result.scores[pixel];
+      const predicted = score !== null && score >= result.threshold;
+      const label = labels ? labels[pixel] === 1 : false;
+      const rgb = result.rgb
+        ? result.rgb.slice(pixel * 3, pixel * 3 + 3)
+        : [42, 58, 63];
+      let color = rgb;
+      if (view === 'reference' && label) color = [68, 212, 185];
+      if (view === 'predicted' && predicted) color = [255, 181, 65];
+      if (view === 'errors' && labels) {
+        if (predicted && label) color = [58, 202, 155]; // true positive
+        else if (predicted && !label) color = [255, 165, 54]; // false positive
+        else if (!predicted && label) color = [242, 79, 87]; // false negative
+      }
+      frame.data.set([...color, score === null ? 70 : 255], pixel * 4);
+    }
     context.putImageData(frame, 0, 0);
-  }, [result, layer]);
+  }, [result, view]);
 
-  return <canvas ref={canvas} width={result.width} height={result.height}
-    role="img" aria-label={layer === 'model' ? 'Image with amber landslide candidate pixels' : layer === 'labels' ? 'Image with turquoise reference label pixels' : 'Natural-color Sentinel-2 tile'} />;
+  return <figure className="scar-tile">
+    <figcaption>{viewNames[view]}</figcaption>
+    <canvas ref={canvas} width={result.width} height={result.height}
+      role="img" aria-label={viewNames[view]} />
+  </figure>;
+}
+
+const tierNames = {
+  high: 'HIGH review priority',
+  medium: 'MEDIUM review priority',
+  low: 'LOW review priority',
+  none_detected: 'No scar candidates detected',
+  unavailable: 'Input insufficient to assess',
+};
+
+function percent(value) {
+  return Number.isFinite(value) ? (100 * value).toFixed(1) + '%' : 'N/A';
 }
 
 export default function LandslideLab() {
   const [result, setResult] = useState(null);
-  const [layer, setLayer] = useState('model');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const upload = useRef(null);
@@ -32,16 +66,14 @@ export default function LandslideLab() {
     setResult(null);
     try {
       if (file && file.size > 4_000_000) throw new Error('The JSON tile must be 4 MB or smaller.');
-      const response = await fetch(file ? '/api/landslide' : '/api/landslide?example=1', file ? {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: file,
-      } : undefined);
+      const response = await fetch(file ? '/api/landslide' : '/api/landslide?example=1',
+        file ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: file } : undefined);
       if (!response.headers.get('content-type')?.includes('application/json')) {
-        throw new Error('The landslide service is temporarily unavailable.');
+        throw new Error('The scar detection API is unavailable.');
       }
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Inference failed.');
-      setResult(data);
-      setLayer('model');
+      const answer = await response.json();
+      if (!response.ok) throw new Error(answer.error || 'Inference failed.');
+      setResult(answer);
     } catch (problem) {
       setError(problem.message);
     } finally {
@@ -49,45 +81,77 @@ export default function LandslideLab() {
     }
   }
 
-  function runUpload(event) {
+  function uploadTile(event) {
     const file = event.currentTarget.files[0];
     if (file) run(file);
     event.currentTarget.value = '';
   }
 
-  return (
-    <dialog id="landslide-lab" aria-labelledby="landslide-title">
-      <div className="discovery-heading">
-        <div><h2 id="landslide-title">Post-event landslide detection</h2><p>Sentinel-2 and ALOS terrain · Experimental</p></div>
-        <form method="dialog"><button className="quiet" aria-label="Close landslide detection">×</button></form>
+  const screening = result?.screening;
+  const evaluation = result?.example_evaluation;
+  const views = result?.labels
+    ? ['satellite', 'reference', 'predicted', 'errors']
+    : ['satellite', 'predicted'];
+
+  return <dialog id="landslide-lab" aria-labelledby="landslide-title">
+    <div className="discovery-heading">
+      <div>
+        <h2 id="landslide-title">Landslide scar detection</h2>
+        <p>Post-event mapping · Sentinel-2 + terrain · experimental</p>
       </div>
-      <p>Run the model on a held-out image acquired after a landslide or upload a compatible 14-band tile.</p>
-      <div className="lab-actions">
-        <button className="quiet lab-primary" type="button" disabled={busy} onClick={() => run()}>Run held-out example</button>
-        <button className="quiet" type="button" disabled={busy} onClick={() => upload.current.click()}>Upload JSON tile</button>
-        <input type="file" ref={upload} accept=".json,application/json" onChange={runUpload} hidden />
-        <a href="/api/landslide" target="_blank" rel="noreferrer">Model card</a>
+      <form method="dialog"><button className="quiet" aria-label="Close scar detector">×</button></form>
+    </div>
+    <p>A <strong>landslide scar</strong> is the disturbed/exposed ground left <strong>after</strong>
+      material slides down a slope. This U-Net maps possible scars in prepared satellite imagery.
+      It does not predict when a slope will collapse.</p>
+    <div className="lab-actions">
+      <button className="quiet lab-primary" type="button" disabled={busy} onClick={() => run()}>
+        Compare held-out example
+      </button>
+      <button className="quiet" type="button" disabled={busy} onClick={() => upload.current?.click()}>
+        Upload prepared 14-band tile
+      </button>
+      <input type="file" ref={upload} accept=".json,application/json" onChange={uploadTile} hidden />
+      <a href="/api/landslide" target="_blank" rel="noreferrer">Model evaluation</a>
+    </div>
+    {busy && <p role="status">Running the published ONNX model…</p>}
+    {error && <p role="alert">{error}</p>}
+    {result && <div className="scar-results">
+      <h3>{result.id || 'Uploaded satellite tile'}</h3>
+      <div className="scar-comparison-grid">
+        {views.map(view => <TileView key={view} result={result} view={view} />)}
       </div>
-      {busy && <p role="status">Scoring pixels…</p>}
-      {error && <p role="alert">{error}</p>}
-      {result && <div className="lab-result">
-        <Chip result={result} layer={layer} />
-        <div>
-          <h3>{result.id ?? 'Uploaded tile'}</h3>
-          <p role="status"><strong>{result.candidate_pixels.toLocaleString()} candidate pixels</strong> of {result.valid_pixels.toLocaleString()} scored.</p>
-          <p>Detection threshold {result.threshold.toFixed(3)}. Review candidates against imagery.</p>
-          <div className="lab-actions" aria-label="Image layers">
-            <button className="quiet" type="button" aria-pressed={layer === 'model'} onClick={() => setLayer('model')}>Candidates</button>
-            {result.rgb && <button className="quiet" type="button" aria-pressed={layer === 'rgb'} onClick={() => setLayer('rgb')}>Satellite</button>}
-            {result.labels && <button className="quiet" type="button" aria-pressed={layer === 'labels'} onClick={() => setLayer('labels')}>Reference labels</button>}
-          </div>
-        </div>
+      {evaluation && <div className="scar-evaluation">
+        <p><strong>This single test tile:</strong> F1 {percent(evaluation.f1)} ·
+          Precision {percent(evaluation.precision)} · Recall {percent(evaluation.recall)} ·
+          IoU {percent(evaluation.iou)}</p>
+        <p>Correct scar pixels {evaluation.tp.toLocaleString()} ·
+          False alarms {evaluation.fp.toLocaleString()} ·
+          Missed scar pixels {evaluation.fn.toLocaleString()}</p>
+        <p className="scar-key">Green: correctly detected · Orange: false alarm · Red: missed scar</p>
       </div>}
-      <details>
-        <summary>Tile format and validation</summary>
-        <p>Send JSON with <code>width</code>, <code>height</code>, and <code>rows</code>. Dimensions are 1–128 pixels. Supply one row per pixel in image order. Use Sentinel-2 B01 through B12, then ALOS slope and elevation, in the original Landslide4Sense units. Set missing bands to null. Full 128 × 128 tiles provide the spatial context used in training.</p>
-        <p>On 80 held-out benchmark chips, average precision was 69.1% and F1 was 66.2%. Performance in new regions is unmeasured.</p>
-      </details>
-    </dialog>
-  );
+      <div className="scar-screening">
+        <strong>Scar review priority: {tierNames[screening?.review_priority] || 'Not assessed'}</strong>
+        <p>{screening?.reason} · {result.candidate_pixels.toLocaleString()} candidate pixels;
+          {screening?.reviewable_regions ?? 0} connected regions with at least 6 pixels.</p>
+        <p><strong>Not a danger rating.</strong> A large scar isn't automatically dangerous to people.
+          High/medium/low here means how urgently to <em>review the image</em>, based only on
+          candidate patch size. Actual danger needs terrain stability, runout, roads,
+          buildings, people and weather.</p>
+        <p>{result.input_quality?.incomplete_pixels?.toLocaleString() ?? '0'} of
+          {' '}{(result.width * result.height).toLocaleString()} pixels have missing required input bands
+          and were left unscored. Model scores are <strong>not calibrated hazard probabilities</strong>.</p>
+      </div>
+    </div>}
+    <details>
+      <summary>Model input and scientific limitations</summary>
+      <p>Input is a prepared 128 × 128 (or smaller) raster with 12 Sentinel-2 channels
+        B01–B12 and ALOS slope/elevation in Landslide4Sense channel order and units.
+        A normal JPEG, a lone NISAR radar image, or an arbitrary RGB photograph
+        cannot be scored by this model.</p>
+      <p>The previously published test subset contains 80 Landslide4Sense chips.
+        The existing release achieved 66.2% pooled pixel F1. Performance on new
+        countries and rock–ice avalanches such as Rasuwa is unvalidated.</p>
+    </details>
+  </dialog>;
 }
