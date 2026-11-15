@@ -3,6 +3,7 @@ from functools import lru_cache
 import gzip
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from math import isfinite
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -166,11 +167,14 @@ class handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     from forecast import handler as forecast_handler
+    from glof import handler as glof_handler
 
     class LocalHandler(handler):
         def do_GET(self):
+            if urlsplit(self.path).path.rstrip('/') == "/api/glof":
+                return glof_handler.do_GET(self)
             if urlsplit(self.path).path == "/api/forecast":
                 return forecast_handler.do_GET(self)
             return super().do_GET()
 
-    ThreadingHTTPServer(("127.0.0.1", 8765), LocalHandler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", int(os.environ.get('TERRAPULSE_API_PORT', '8765'))), LocalHandler).serve_forever()

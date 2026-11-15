@@ -365,6 +365,29 @@ export function forecastMapCenter() {
   return mapReady ? map.getCenter().wrap() : null;
 }
 
+export function showGlofOnMap(site, geometry, date) {
+  if (!mapReady) return false;
+  current = null;
+  mode = null;
+  hazard = 'Glaciers';
+  focusedCase = 'world';
+  imageryKey = null;
+  fallbackSelection = null;
+  setUrl(false);
+  render();
+  map.addSource('glof-observations', {type:'geojson', data:geometry});
+  map.addLayer({id:'glof-fill', source:'glof-observations', type:'fill',
+    paint:{'fill-color':['match',['get','layer'],'glacial_lake','#71e6d2','historical_lake_inventory','#efca78','#b3bdc6'], 'fill-opacity':.3}});
+  map.addLayer({id:'glof-outlines', source:'glof-observations', type:'line',
+    paint:{'line-color':['match',['get','layer'],'glacial_lake','#71e6d2','historical_lake_inventory','#efca78','#b3bdc6'],'line-width':2}});
+  const [w,s,e,n] = site.lake_bbox;
+  map.fitBounds([[w,s],[e,n]], {padding:55,maxZoom:12,duration:0});
+  byId('map-note').textContent = `${site.name} · experimental radar water ${date}. Historical outlines keep separate dates. Risk not assessed.`;
+  const hasInventory = geometry.features.some(f => f.properties.layer === 'historical_lake_inventory');
+  byId('legend').innerHTML = `<div class="key-list"><span><i style="--key:#71e6d2"></i>Modelled radar water</span>${hasInventory ? '<span><i style="--key:#efca78"></i>Indian NRSC lake inventory · 2016</span>' : ''}<span><i style="--key:#b3bdc6"></i>Historical glacier candidate · GLIMS</span></div>`;
+  return true;
+}
+
 export function showForecastOnMap({ bounds, preview_png }) {
   if (!mapReady) return false;
   current = null;
@@ -548,6 +571,10 @@ async function updateMap() {
   world.remove(map);
   markers.forEach(marker => marker.remove());
   markers = [];
+  for (const id of ['glof-outlines','glof-fill']) {
+    if (map.getLayer(id)) map.removeLayer(id);
+  }
+  if (map.getSource('glof-observations')) map.removeSource('glof-observations');
   for (const id of ['scene','contours','regional-context','satellite-context','tectonic-plates','coolr-outlines','lhasa-forecast']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);

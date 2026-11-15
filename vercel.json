@@ -1,5 +1,9 @@
 {
   "functions": {
+    "api/glof.py": {
+      "includeFiles": "server_data/glof/**",
+      "maxDuration": 10
+    },
     "api/landslide.py": {
       "includeFiles": "server_data/**",
       "maxDuration": 30

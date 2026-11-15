@@ -1,5 +1,20 @@
 # TerraPulse
 
+## Glacial-lake monitoring
+
+Use **Monitor GLOFs** in the map toolbar, or open `/?glof=south_lhonak`.
+The normal/expert panel combines 253 historical radar observations across
+five lakes, annual glacier movement where available, and partial repeat-terrain
+change at South Lhonak. Its Equal Earth study map links to dated lake/glacier
+outlines on the main map. Sources, observation dates, missing measurements and
+lake-specific quality grades stay explicit. Water level and calibrated breach
+probability remain unavailable.
+
+The release includes actual model weights, a real CPU-inference example and a
+Python `/api/glof` function compatible with the existing local/Vercel setup.
+See [GLOF monitoring](docs/glof-monitoring.md) for results, API endpoints and
+[scientific processing](machine%20learning/glof/README.md) for reproducibility.
+
 ## Landslide scar screening and GPU follow-up
 
 **What is a scar?** It is land visibly disturbed *after* a landslide. The
