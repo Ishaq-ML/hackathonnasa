@@ -20,6 +20,9 @@ The documented local Python server also routes `/api/chat` (GET and POST),
 `/api/exposure`, `/api/forecast` and `/api/landslide`. Chat can open GLOF
 monitoring. Exposure queries use a bounded, user-triggered Overpass lookup;
 provider timeouts remain unavailable results, never zero-exposure conclusions.
+Public OSM requests now use coverage-checked regional services for Europe/North
+America, bounded global fallback, recent-result caching and provider/source
+timestamps. See [OSM availability](docs/osm-availability.md) for coverage and limits.
 
 ## Landslide scar screening and GPU follow-up
 

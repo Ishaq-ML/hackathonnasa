@@ -57,7 +57,9 @@ class LocalRoutesTests(unittest.TestCase):
     def test_exposure_routes_real_geometry_analysis_with_fixture_source(self):
         # Network acquisition is mocked, not the endpoint or screening algorithm.
         school = {'type':'node','id':1,'lon':85.53,'lat':28.29,'tags':{'amenity':'school'}}
-        with patch.object(exposure, 'load_osm', return_value=([school], '2026-11-15T00:00:00Z')):
+        source = {'elements':[school],'osm_timestamp':'2026-11-15T00:00:00Z',
+                  'provider':'Test fixture','mode':'upstream','retrieved_at':'2026-11-15T00:00:00Z'}
+        with patch.object(exposure, 'load_osm', return_value=source):
             result = self.get('/api/exposure?lon=85.53&lat=28.29&radius_m=500')
         self.assertEqual(result['counts']['sensitive_places_within_100m'], 1)
         self.assertEqual(result['osm_geojson']['features'][0]['geometry']['type'], 'Point')
@@ -68,6 +70,7 @@ class LocalRoutesTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as error:
                 urlopen(self.url + '/api/exposure?lon=85.53&lat=28.29')
         self.assertEqual(error.exception.code, 503)
+        self.assertEqual(error.exception.headers.get('Retry-After'), '60')
         result = json.load(error.exception)
         self.assertEqual(result['status'], 'unavailable')
         self.assertNotIn('counts', result)
