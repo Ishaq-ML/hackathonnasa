@@ -10,6 +10,11 @@ from urllib.parse import parse_qs, urlsplit
 import numpy as np
 import onnxruntime as ort
 
+try:
+    from .scar_assessment import assess
+except ImportError:  # local development: python api/landslide.py
+    from scar_assessment import assess
+
 DATA = Path(__file__).resolve().parents[1] / "server_data"
 TILE_SIZE = 128
 MAX_BYTES = 4_000_000
@@ -31,6 +36,8 @@ def model_card():
         "test": metrics["test"],
         "chips": {name: len(ids) for name, ids in metrics["chip_ids"].items()},
         "task": "post-event scar mapping",
+        "screening_definition": "Heuristic connected-candidate review priority; NOT physical danger or safety",
+        "model_scores_calibrated_as_hazard_probability": False,
     }
 
 
@@ -62,7 +69,9 @@ def parse_tile(payload):
 
 
 def predict(width, height, tile):
-    valid = np.isfinite(tile).any(axis=2).reshape(-1)
+    # The model needs all 12 optical and both terrain channels. Do not
+    # silently score a partly missing pixel as if it were observed.
+    valid = np.isfinite(tile).all(axis=2).reshape(-1)
     if not valid.any():
         return [None] * len(valid)
     pad = ((0, TILE_SIZE - height), (0, TILE_SIZE - width), (0, 0))
@@ -76,10 +85,17 @@ def result(payload):
     card = model_card()
     threshold = card["threshold"]
     scores = predict(width, height, tile)
+    screening = assess(scores, width, height, threshold)
     return {
         "width": width, "height": height, "threshold": threshold, "scores": scores,
-        "candidate_pixels": sum(score is not None and score >= threshold for score in scores),
-        "valid_pixels": sum(score is not None for score in scores),
+        "candidate_pixels": screening["candidate_pixels"],
+        "valid_pixels": screening["valid_pixels"],
+        "input_quality": {
+            "required_channels": BANDS,
+            "incomplete_pixels": width * height - screening["valid_pixels"],
+            "incomplete_pixels_are_unscored": True,
+        },
+        "screening": screening,
         "model_revision": card["revision"], "model_version": card["model_version"],
     }
 
@@ -88,7 +104,26 @@ def result(payload):
 def example_result():
     with gzip.open(DATA / "landslide_example.json.gz", "rt", encoding="utf-8") as asset:
         tile = json.load(asset)
-    return result(tile) | {key: tile[key] for key in ("id", "rgb", "labels")}
+    response = result(tile) | {key: tile[key] for key in ("id", "rgb", "labels")}
+    labels = tile["labels"]
+    if len(labels) != response["width"] * response["height"] or any(y not in (0, 1) for y in labels):
+        raise ValueError("Invalid trusted example labels")
+    threshold = response["threshold"]
+    # Per-tile evaluation, distinct from the fixed 80-chip benchmark result.
+    actual = [(y, p >= threshold) for y, p in zip(labels, response["scores"]) if p is not None]
+    tp = sum(y == 1 and pred for y, pred in actual)
+    fp = sum(y == 0 and pred for y, pred in actual)
+    fn = sum(y == 1 and not pred for y, pred in actual)
+    tn = sum(y == 0 and not pred for y, pred in actual)
+    response["example_evaluation"] = {
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "evaluated_pixels": len(actual),
+        "precision": tp / (tp + fp) if tp + fp else 0.0,
+        "recall": tp / (tp + fn) if tp + fn else 0.0,
+        "f1": 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0.0,
+        "iou": tp / (tp + fp + fn) if tp + fp + fn else 0.0,
+    }
+    return response
 
 
 class handler(BaseHTTPRequestHandler):
@@ -102,11 +137,17 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def do_GET(self):
+        if urlsplit(self.path).path not in ("/api/landslide", "/api/landslide/"):
+            self.send_json({"error": "Unknown endpoint"}, 404)
+            return
         query = parse_qs(urlsplit(self.path).query)
         body = example_result() if query.get("example") == ["1"] else model_card()
         self.send_json(body, cache="public, max-age=300, s-maxage=3600")
 
     def do_POST(self):
+        if urlsplit(self.path).path not in ("/api/landslide", "/api/landslide/"):
+            self.send_json({"error": "Unknown endpoint"}, 404)
+            return
         if self.headers.get_content_type() != "application/json":
             self.send_json({"error": "Use Content-Type application/json."}, 415)
             return
