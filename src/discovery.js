@@ -47,7 +47,7 @@ export async function discover(lon, lat, start, end, signal) {
   return {hits, observations: [...groups.values()].sort((a,b) => b.date.localeCompare(a.date))};
 }
 
-const inventory = 'https://gis.earthdata.nasa.gov/portal/rest/services/Landslides/COOLR_Events_Polygons/MapServer/0/query';
+const inventory = 'https://gis.earthdata.nasa.gov/portal/rest/services/Landslides/COOLR_Events_Polygons/FeatureServer/0/query';
 
 async function mappedLandslides(lon, lat, start, end, signal) {
   if (![lon, lat].every(Number.isFinite) || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
