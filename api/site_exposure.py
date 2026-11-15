@@ -95,6 +95,8 @@ def screen_site(elements, lon, lat, radius_m=500, osm_timestamp=None):
         raise ValueError("Unexpected OSM element count")
 
     categories = {"buildings": [], "roads": [], "paths": [], "sensitive_places": []}
+    map_features = []
+    map_features_truncated = False
     skipped = 0
     for element in elements:
         if not isinstance(element, dict) or not isinstance(element.get("tags"), dict):
@@ -104,14 +106,16 @@ def screen_site(elements, lon, lat, radius_m=500, osm_timestamp=None):
         building = tags.get("building")
         highway = tags.get("highway")
         amenity = tags.get("amenity")
-        category = (
-            "buildings" if building and building not in ("no", "demolished")
-            else "roads" if highway in MAJOR_ROADS
-            else "paths" if highway in FOOTPATHS
-            else "sensitive_places" if amenity in CRITICAL_AMENITIES
-            else None
-        )
-        if category is None:
+        kinds = []
+        if building and building not in ("no", "demolished"):
+            kinds.append("buildings")
+        if highway in MAJOR_ROADS:
+            kinds.append("roads")
+        elif highway in FOOTPATHS:
+            kinds.append("paths")
+        if amenity in CRITICAL_AMENITIES:
+            kinds.append("sensitive_places")
+        if not kinds:
             continue
         distance = _element_distance(element, lon, lat)
         if distance is None:
@@ -119,11 +123,46 @@ def screen_site(elements, lon, lat, radius_m=500, osm_timestamp=None):
             continue
         if distance > radius_m:
             continue
-        categories[category].append({
-            "osm_type": element.get("type", ""),
-            "osm_id": str(element.get("id", "")),
-            "distance_m": round(distance, 1),
-            "category": tags.get("building", highway or amenity),
+        for category in kinds:
+            categories[category].append({
+                "osm_type": element.get("type", ""),
+                "osm_id": str(element.get("id", "")),
+                "distance_m": round(distance, 1),
+                "category": amenity if category == "sensitive_places" else
+                    (highway if category in ("roads", "paths") else building),
+            })
+        # Display only a bounded, attributed subset. The response is NOT a
+        # runout footprint: OSM features are the background asset inventory.
+        if len(map_features) >= 300:
+            map_features_truncated = True
+            continue
+        geom = element.get("geometry", [])
+        coordinates = []
+        if isinstance(geom, list) and len(geom) <= 1000:
+            try:
+                coordinates = [[float(pt["lon"]), float(pt["lat"])] for pt in geom]
+            except (ValueError, TypeError, KeyError):
+                coordinates = []
+        if not coordinates and element.get("type") == "node":
+            coordinates = [[float(element["lon"]), float(element["lat"])]]
+        if not coordinates:
+            continue
+        if len(coordinates) == 1:
+            geometry = {"type": "Point", "coordinates": coordinates[0]}
+        elif "buildings" in kinds and len(coordinates) >= 3:
+            ring = coordinates if coordinates[0] == coordinates[-1] else coordinates + coordinates[:1]
+            geometry = {"type": "Polygon", "coordinates": [ring]}
+        else:
+            geometry = {"type": "LineString", "coordinates": coordinates}
+        map_features.append({
+            "type": "Feature",
+            "id": f'{element.get("type", "")}/{element.get("id", "")}',
+            "geometry": geometry,
+            "properties": {
+                "kind": "buildings" if "buildings" in kinds else
+                    ("sensitive_places" if "sensitive_places" in kinds else kinds[0]),
+                "distance_m": round(distance, 1)
+            }
         })
 
     for collection in categories.values():
@@ -179,6 +218,8 @@ def screen_site(elements, lon, lat, radius_m=500, osm_timestamp=None):
         },
         "nearest_m": nearest,
         "sample_assets": {k: assets[:8] for k, assets in categories.items()},
+        "osm_geojson": {"type": "FeatureCollection", "features": map_features},
+        "map_features_truncated": map_features_truncated,
         "skipped_elements": skipped,
         "human_exposure_review_priority": review,
         "explanation": explanation,
